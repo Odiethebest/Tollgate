@@ -1,4 +1,4 @@
-# Multi-Tenant LLM API Gateway
+# Tollgate: Multi-Tenant LLM API Gateway
 
 > A database-centric API gateway for governing LLM usage across teams — handling authentication, quota enforcement, billing, and audit logging through transactional SQL.
 
@@ -184,8 +184,8 @@ Content-Type: application/json
 ### Local Setup
 
 ```bash
-git clone https://github.com/your-org/AI-API-Gateway-Server.git
-cd AI-API-Gateway-Server
+git clone https://github.com/your-org/Tollgate.git
+cd Tollgate
 ```
 
 Create a local database:
