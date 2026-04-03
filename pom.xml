@@ -12,11 +12,11 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.example</groupId>
-    <artifactId>demo</artifactId>
+    <groupId>com.llmgateway</groupId>
+    <artifactId>llm-api-gateway</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>demo</name>
-    <description>Demo project for Spring Boot on GCP</description>
+    <name>llm-api-gateway</name>
+    <description>Multi-tenant LLM API Gateway backend</description>
 
     <properties>
         <java.version>17</java.version>

@@ -1,7 +1,7 @@
 runtime: java17
 instance_class: F2
 
-entrypoint: java -jar target/demo-0.0.1-SNAPSHOT.jar
+entrypoint: java -jar target/llm-api-gateway-0.0.1-SNAPSHOT.jar
 
 env_variables:
   SPRING_DATASOURCE_URL: "jdbc:postgresql://35.238.165.15:5432/mydb"
