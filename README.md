@@ -300,9 +300,9 @@ Optimistic locking (version column) would require retry logic in the application
 
 ## Team
 
-| Name | Role |
-|---|---|
-| Runxin Shao | Schema design, GCP deployment |
-| Ziqi Yang | API implementation, transaction logic |
+| Name             | Role |
+|------------------|---|
+| Runxin(Alex)Shao | Schema design, GCP deployment |
+| Ziqi(Odie)Yang   | API implementation, transaction logic |
 
 CS 5200 Database Management Systems — Northeastern University, Spring 2026
