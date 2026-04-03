@@ -1,0 +1,318 @@
+package com.example.demo.service;
+
+import com.example.demo.dto.GatewaySubmitRequest;
+import com.example.demo.dto.GatewaySubmitResponse;
+import com.example.demo.entity.ApiKey;
+import com.example.demo.entity.AuditLog;
+import com.example.demo.entity.DeniedEvent;
+import com.example.demo.entity.GatewayRequest;
+import com.example.demo.entity.GatewayResponse;
+import com.example.demo.entity.LlmModel;
+import com.example.demo.entity.ModelPricing;
+import com.example.demo.entity.MonthlyQuota;
+import com.example.demo.repository.ApiKeyRepository;
+import com.example.demo.repository.AuditLogRepository;
+import com.example.demo.repository.DeniedEventRepository;
+import com.example.demo.repository.GatewayRequestRepository;
+import com.example.demo.repository.GatewayResponseRepository;
+import com.example.demo.repository.LlmModelRepository;
+import com.example.demo.repository.ModelPricingRepository;
+import com.example.demo.repository.MonthlyQuotaRepository;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+@Service
+public class GatewayService {
+
+    private static final String STATUS_SUCCESS = "success";
+    private static final String STATUS_DENIED = "denied";
+    private static final String STATUS_FAILED = "failed";
+    private static final String REASON_KEY_REVOKED = "KEY_REVOKED";
+    private static final String REASON_QUOTA_EXCEEDED = "QUOTA_EXCEEDED";
+    private static final String ACTOR_GATEWAY = "gateway-service";
+
+    private final ApiKeyRepository apiKeyRepository;
+    private final LlmModelRepository llmModelRepository;
+    private final MonthlyQuotaRepository monthlyQuotaRepository;
+    private final ModelPricingRepository modelPricingRepository;
+    private final GatewayRequestRepository gatewayRequestRepository;
+    private final GatewayResponseRepository gatewayResponseRepository;
+    private final DeniedEventRepository deniedEventRepository;
+    private final AuditLogRepository auditLogRepository;
+
+    public GatewayService(
+            ApiKeyRepository apiKeyRepository,
+            LlmModelRepository llmModelRepository,
+            MonthlyQuotaRepository monthlyQuotaRepository,
+            ModelPricingRepository modelPricingRepository,
+            GatewayRequestRepository gatewayRequestRepository,
+            GatewayResponseRepository gatewayResponseRepository,
+            DeniedEventRepository deniedEventRepository,
+            AuditLogRepository auditLogRepository
+    ) {
+        this.apiKeyRepository = apiKeyRepository;
+        this.llmModelRepository = llmModelRepository;
+        this.monthlyQuotaRepository = monthlyQuotaRepository;
+        this.modelPricingRepository = modelPricingRepository;
+        this.gatewayRequestRepository = gatewayRequestRepository;
+        this.gatewayResponseRepository = gatewayResponseRepository;
+        this.deniedEventRepository = deniedEventRepository;
+        this.auditLogRepository = auditLogRepository;
+    }
+
+    @Transactional
+    public GatewayResult submitRequest(String rawApiKey, GatewaySubmitRequest requestBody) {
+        ValidationUtils.requireNonBlank(rawApiKey, "X-API-Key");
+        if (requestBody == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
+        }
+        ValidationUtils.requirePositiveLong(requestBody.modelId(), "modelId");
+        ValidationUtils.requirePositive(requestBody.inputTokens(), "inputTokens");
+
+        String keyHash = HashUtils.sha256Hex(rawApiKey);
+        ApiKey apiKey = apiKeyRepository.findByKeyHash(keyHash)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "API key not found"));
+
+        LlmModel model = llmModelRepository.findById(requestBody.modelId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model not found"));
+
+        if ("revoked".equals(apiKey.getStatus())) {
+            GatewayRequest deniedRequest = createDeniedRequest(apiKey, model, requestBody, null);
+            DeniedEvent deniedEvent = createDeniedEvent(deniedRequest, REASON_KEY_REVOKED, null);
+            createAuditLog(deniedRequest, apiKey, REASON_KEY_REVOKED, "Request denied because key is revoked");
+
+            GatewaySubmitResponse response = new GatewaySubmitResponse(
+                    deniedRequest.getRequestId(),
+                    deniedRequest.getStatus(),
+                    "API key has been revoked",
+                    deniedRequest.getComputedCost(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    deniedEvent.getReason(),
+                    false,
+                    deniedRequest.getRequestedAt()
+            );
+            return new GatewayResult(HttpStatus.FORBIDDEN, response);
+        }
+
+        String currentMonth = YearMonth.now().toString();
+        MonthlyQuota quota = monthlyQuotaRepository.findForUpdate(apiKey.getProject().getProjectId(), currentMonth)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No quota configured"));
+
+        ModelPricing pricing = modelPricingRepository.findByModelModelIdAndBillingMonth(model.getModelId(), currentMonth)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No pricing configured"));
+
+        String idempotencyKey = normalizeIdempotencyKey(requestBody.idempotencyKey());
+        if (idempotencyKey != null) {
+            Optional<GatewayRequest> existing = gatewayRequestRepository
+                    .findByProjectProjectIdAndIdempotencyKey(apiKey.getProject().getProjectId(), idempotencyKey);
+            if (existing.isPresent()) {
+                return buildIdempotentResult(existing.get());
+            }
+        }
+
+        int outputTokens = ThreadLocalRandom.current().nextInt(50, 501);
+        int latencyMs = ThreadLocalRandom.current().nextInt(200, 3001);
+        BigDecimal computedCost = computeCost(
+                requestBody.inputTokens(),
+                outputTokens,
+                pricing.getInputRate(),
+                pricing.getOutputRate()
+        );
+
+        long updatedTokens = quota.getTokensUsed() + requestBody.inputTokens();
+        if (updatedTokens > quota.getTokenLimit()) {
+            BigDecimal thresholdPct = quota.getTokenLimit() == 0
+                    ? null
+                    : BigDecimal.valueOf(quota.getTokensUsed() * 100.0 / quota.getTokenLimit())
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            GatewayRequest deniedRequest = createDeniedRequest(apiKey, model, requestBody, idempotencyKey);
+            DeniedEvent deniedEvent = createDeniedEvent(deniedRequest, REASON_QUOTA_EXCEEDED, thresholdPct);
+            createAuditLog(deniedRequest, apiKey, REASON_QUOTA_EXCEEDED, "Request denied due to quota exceeded");
+
+            GatewaySubmitResponse response = new GatewaySubmitResponse(
+                    deniedRequest.getRequestId(),
+                    deniedRequest.getStatus(),
+                    "Monthly token quota exceeded",
+                    deniedRequest.getComputedCost(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    deniedEvent.getReason(),
+                    false,
+                    deniedRequest.getRequestedAt()
+            );
+            return new GatewayResult(HttpStatus.TOO_MANY_REQUESTS, response);
+        }
+
+        quota.setTokensUsed(updatedTokens);
+        monthlyQuotaRepository.save(quota);
+
+        GatewayRequest successRequest = new GatewayRequest();
+        successRequest.setApiKey(apiKey);
+        successRequest.setModel(model);
+        successRequest.setProject(apiKey.getProject());
+        successRequest.setInputTokens(requestBody.inputTokens());
+        successRequest.setStatus(STATUS_SUCCESS);
+        successRequest.setIdempotencyKey(idempotencyKey);
+        successRequest.setComputedCost(computedCost);
+        successRequest.setEnvironment(apiKey.getProject().getEnvironment());
+        successRequest = gatewayRequestRepository.save(successRequest);
+
+        GatewayResponse gatewayResponse = new GatewayResponse();
+        gatewayResponse.setRequest(successRequest);
+        gatewayResponse.setOutputTokens(outputTokens);
+        gatewayResponse.setLatencyMs(latencyMs);
+        gatewayResponse.setHttpStatus(200);
+        gatewayResponse.setErrorType(null);
+        gatewayResponse.setRawResponse("Mock LLM response generated");
+        gatewayResponseRepository.save(gatewayResponse);
+
+        GatewaySubmitResponse response = new GatewaySubmitResponse(
+                successRequest.getRequestId(),
+                successRequest.getStatus(),
+                "Request accepted",
+                successRequest.getComputedCost(),
+                gatewayResponse.getOutputTokens(),
+                gatewayResponse.getLatencyMs(),
+                gatewayResponse.getHttpStatus(),
+                gatewayResponse.getErrorType(),
+                null,
+                false,
+                successRequest.getRequestedAt()
+        );
+        return new GatewayResult(HttpStatus.OK, response);
+    }
+
+    private GatewayResult buildIdempotentResult(GatewayRequest existing) {
+        if (STATUS_SUCCESS.equals(existing.getStatus())) {
+            GatewayResponse response = gatewayResponseRepository.findByRequestRequestId(existing.getRequestId())
+                    .orElse(null);
+            GatewaySubmitResponse body = new GatewaySubmitResponse(
+                    existing.getRequestId(),
+                    existing.getStatus(),
+                    "Idempotent replay",
+                    existing.getComputedCost(),
+                    response == null ? null : response.getOutputTokens(),
+                    response == null ? null : response.getLatencyMs(),
+                    response == null ? null : response.getHttpStatus(),
+                    response == null ? null : response.getErrorType(),
+                    null,
+                    true,
+                    existing.getRequestedAt()
+            );
+            return new GatewayResult(HttpStatus.OK, body);
+        }
+
+        if (STATUS_DENIED.equals(existing.getStatus())) {
+            String deniedReason = deniedEventRepository.findByRequestRequestId(existing.getRequestId())
+                    .map(DeniedEvent::getReason)
+                    .orElse(REASON_QUOTA_EXCEEDED);
+            HttpStatus statusCode = REASON_KEY_REVOKED.equals(deniedReason)
+                    ? HttpStatus.FORBIDDEN
+                    : HttpStatus.TOO_MANY_REQUESTS;
+            GatewaySubmitResponse body = new GatewaySubmitResponse(
+                    existing.getRequestId(),
+                    existing.getStatus(),
+                    "Idempotent replay",
+                    existing.getComputedCost(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    deniedReason,
+                    true,
+                    existing.getRequestedAt()
+            );
+            return new GatewayResult(statusCode, body);
+        }
+
+        GatewaySubmitResponse body = new GatewaySubmitResponse(
+                existing.getRequestId(),
+                existing.getStatus(),
+                "Idempotent replay",
+                existing.getComputedCost(),
+                null,
+                null,
+                null,
+                "REQUEST_FAILED",
+                null,
+                true,
+                existing.getRequestedAt()
+        );
+        return new GatewayResult(HttpStatus.INTERNAL_SERVER_ERROR, body);
+    }
+
+    private GatewayRequest createDeniedRequest(
+            ApiKey apiKey,
+            LlmModel model,
+            GatewaySubmitRequest requestBody,
+            String idempotencyKey
+    ) {
+        GatewayRequest deniedRequest = new GatewayRequest();
+        deniedRequest.setApiKey(apiKey);
+        deniedRequest.setModel(model);
+        deniedRequest.setProject(apiKey.getProject());
+        deniedRequest.setInputTokens(requestBody.inputTokens());
+        deniedRequest.setStatus(STATUS_DENIED);
+        deniedRequest.setIdempotencyKey(idempotencyKey);
+        deniedRequest.setComputedCost(null);
+        deniedRequest.setEnvironment(apiKey.getProject().getEnvironment());
+        return gatewayRequestRepository.save(deniedRequest);
+    }
+
+    private DeniedEvent createDeniedEvent(GatewayRequest request, String reason, BigDecimal thresholdPct) {
+        DeniedEvent deniedEvent = new DeniedEvent();
+        deniedEvent.setRequest(request);
+        deniedEvent.setReason(reason);
+        deniedEvent.setThresholdPct(thresholdPct);
+        return deniedEventRepository.save(deniedEvent);
+    }
+
+    private void createAuditLog(GatewayRequest request, ApiKey apiKey, String action, String details) {
+        AuditLog auditLog = new AuditLog();
+        auditLog.setRequest(request);
+        auditLog.setApiKey(apiKey);
+        auditLog.setAction(action);
+        auditLog.setPerformedBy(ACTOR_GATEWAY);
+        auditLog.setDetails(details);
+        auditLogRepository.save(auditLog);
+    }
+
+    private BigDecimal computeCost(
+            int inputTokens,
+            int outputTokens,
+            BigDecimal inputRate,
+            BigDecimal outputRate
+    ) {
+        BigDecimal inputPart = BigDecimal.valueOf(inputTokens)
+                .divide(BigDecimal.valueOf(1000), 10, RoundingMode.HALF_UP)
+                .multiply(inputRate);
+        BigDecimal outputPart = BigDecimal.valueOf(outputTokens)
+                .divide(BigDecimal.valueOf(1000), 10, RoundingMode.HALF_UP)
+                .multiply(outputRate);
+        return inputPart.add(outputPart).setScale(6, RoundingMode.HALF_UP);
+    }
+
+    private String normalizeIdempotencyKey(String rawIdempotencyKey) {
+        if (rawIdempotencyKey == null || rawIdempotencyKey.isBlank()) {
+            return null;
+        }
+        return rawIdempotencyKey.trim();
+    }
+
+    public record GatewayResult(HttpStatus httpStatus, GatewaySubmitResponse body) {
+    }
+}

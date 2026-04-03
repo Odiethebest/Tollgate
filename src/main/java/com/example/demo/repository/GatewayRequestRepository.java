@@ -21,7 +21,7 @@ public interface GatewayRequestRepository extends JpaRepository<GatewayRequest, 
 
     @Query(value = """
             SELECT COALESCE(SUM(r.computed_cost), 0) AS totalCost,
-                   COALESCE(SUM(r.input_tokens + COALESCE(rs.output_tokens, 0)), 0) AS totalTokens
+                   COALESCE(SUM(r.input_tokens + COALESCE(rs.output_tokens, 0)), 0)::BIGINT AS totalTokens
             FROM request r
             LEFT JOIN response rs ON rs.request_id = r.request_id
             WHERE r.project_id = :projectId
@@ -118,7 +118,7 @@ public interface GatewayRequestRepository extends JpaRepository<GatewayRequest, 
 
     @Query(value = """
             SELECT COALESCE(SUM(r.computed_cost), 0) AS totalCost,
-                   COALESCE(SUM(r.input_tokens + COALESCE(rs.output_tokens, 0)), 0) AS totalTokens
+                   COALESCE(SUM(r.input_tokens + COALESCE(rs.output_tokens, 0)), 0)::BIGINT AS totalTokens
             FROM request r
             LEFT JOIN response rs ON rs.request_id = r.request_id
             WHERE r.project_id = :projectId
