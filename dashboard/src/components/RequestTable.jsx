@@ -237,16 +237,7 @@ export default function RequestTable() {
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                  <colgroup>
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '22%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '12%' }} />
-                  </colgroup>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
                     <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
                       <th style={TH_STYLE}>Request ID</th>
@@ -254,7 +245,7 @@ export default function RequestTable() {
                       <th style={TH_STYLE}>Status</th>
                       <th style={TH_STYLE}>Model ID</th>
                       <th style={TH_STYLE}>Project ID</th>
-                      <th style={{ ...TH_STYLE, textAlign: 'right' }}>Tokens</th>
+                      <th style={{ ...TH_STYLE, textAlign: 'right' }}>Input Tokens</th>
                       <th style={{ ...TH_STYLE, textAlign: 'right' }}>Cost</th>
                     </tr>
                   </thead>
