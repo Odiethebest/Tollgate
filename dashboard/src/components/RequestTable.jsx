@@ -136,9 +136,9 @@ export default function RequestTable() {
   }
 
   return (
-    <div id="audit" style={{ background: 'white', borderRadius: 20, padding: 24 }}>
+    <div id="audit" style={{ background: 'white', borderRadius: 20, padding: 24, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid #F0F0EE' }}>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid #F0F0EE', flexShrink: 0 }}>
         {[
           { key: 'keyRequests', label: 'Key Requests' },
           { key: 'auditFlags', label: 'Audit Flags' },
@@ -165,7 +165,7 @@ export default function RequestTable() {
       </div>
 
       {/* Content */}
-      <div style={{ transition: 'opacity 200ms, transform 200ms' }}>
+      <div style={{ transition: 'opacity 200ms, transform 200ms', flex: 1, overflowY: 'auto' }}>
         {activeTab === 'keyRequests' && (
           <>
             {/* Controls */}

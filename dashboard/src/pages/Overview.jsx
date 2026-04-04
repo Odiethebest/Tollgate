@@ -76,10 +76,10 @@ export default function Overview({
         </motion.div>
       </div>
 
-      <div style={{ gridArea: 'table' }}>
+      <div style={{ gridArea: 'table', alignSelf: 'stretch', display: 'flex', flexDirection: 'column' }}>
         <motion.div
           layoutId="audit-card"
-          style={{ position: 'relative' }}
+          style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}
           whileHover={{ scale: 1.01 }}
           transition={{ duration: 0.15 }}
           onMouseEnter={() => setHovered('audit')}
@@ -90,10 +90,10 @@ export default function Overview({
         </motion.div>
       </div>
 
-      <div style={{ gridArea: 'models' }}>
+      <div style={{ gridArea: 'models', alignSelf: 'stretch', display: 'flex', flexDirection: 'column' }}>
         <motion.div
           layoutId="models-card"
-          style={{ position: 'relative' }}
+          style={{ position: 'relative', flex: 1 }}
           whileHover={{ scale: 1.01 }}
           transition={{ duration: 0.15 }}
           onMouseEnter={() => setHovered('models')}
