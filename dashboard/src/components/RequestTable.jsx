@@ -169,66 +169,68 @@ export default function RequestTable() {
         ))}
       </div>
 
-      {/* Content */}
-      <div style={{ transition: 'opacity 200ms, transform 200ms', flex: 1, overflowY: 'auto' }}>
+      {/* Controls — outside scroll area so they stay visible */}
+      {activeTab === 'keyRequests' && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0 }}>
+          <input
+            type="number"
+            placeholder="Key ID"
+            value={keyId}
+            onChange={e => setKeyId(e.target.value)}
+            style={{
+              width: 80,
+              padding: '6px 10px',
+              border: '1px solid #F0F0EE',
+              borderRadius: 8,
+              fontSize: '0.875rem',
+              outline: 'none',
+            }}
+          />
+          <input
+            type="datetime-local"
+            value={fromDate}
+            onChange={e => setFromDate(e.target.value)}
+            style={{
+              padding: '6px 10px',
+              border: '1px solid #F0F0EE',
+              borderRadius: 8,
+              fontSize: '0.875rem',
+              outline: 'none',
+            }}
+          />
+          <input
+            type="datetime-local"
+            value={toDate}
+            onChange={e => setToDate(e.target.value)}
+            style={{
+              padding: '6px 10px',
+              border: '1px solid #F0F0EE',
+              borderRadius: 8,
+              fontSize: '0.875rem',
+              outline: 'none',
+            }}
+          />
+          <button
+            onClick={handleSearch}
+            style={{
+              padding: '6px 16px',
+              background: '#1A1A2E',
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+            }}
+          >
+            Search
+          </button>
+        </div>
+      )}
+
+      {/* Scrollable content */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {activeTab === 'keyRequests' && (
           <>
-            {/* Controls */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                type="number"
-                placeholder="Key ID"
-                value={keyId}
-                onChange={e => setKeyId(e.target.value)}
-                style={{
-                  width: 80,
-                  padding: '6px 10px',
-                  border: '1px solid #F0F0EE',
-                  borderRadius: 8,
-                  fontSize: '0.875rem',
-                  outline: 'none',
-                }}
-              />
-              <input
-                type="datetime-local"
-                value={fromDate}
-                onChange={e => setFromDate(e.target.value)}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #F0F0EE',
-                  borderRadius: 8,
-                  fontSize: '0.875rem',
-                  outline: 'none',
-                }}
-              />
-              <input
-                type="datetime-local"
-                value={toDate}
-                onChange={e => setToDate(e.target.value)}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #F0F0EE',
-                  borderRadius: 8,
-                  fontSize: '0.875rem',
-                  outline: 'none',
-                }}
-              />
-              <button
-                onClick={handleSearch}
-                style={{
-                  padding: '6px 16px',
-                  background: '#1A1A2E',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
-              >
-                Search
-              </button>
-            </div>
-
             {loading ? (
               <div>
                 {[1, 2, 3, 4].map(i => (
