@@ -73,10 +73,15 @@ const TH_STYLE = {
 
 const TD_STYLE = { padding: '10px 8px', verticalAlign: 'middle' }
 
+function toIso(val) {
+  if (!val) return val
+  return val.length === 16 ? val + ':00' : val
+}
+
 function buildQuery(params) {
   const parts = []
-  if (params.from) parts.push(`from=${encodeURIComponent(params.from)}`)
-  if (params.to) parts.push(`to=${encodeURIComponent(params.to)}`)
+  if (params.from) parts.push(`from=${encodeURIComponent(toIso(params.from))}`)
+  if (params.to) parts.push(`to=${encodeURIComponent(toIso(params.to))}`)
   return parts.length ? '?' + parts.join('&') : ''
 }
 

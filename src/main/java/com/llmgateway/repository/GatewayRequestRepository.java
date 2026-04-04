@@ -91,8 +91,8 @@ public interface GatewayRequestRepository extends JpaRepository<GatewayRequest, 
                    r.computed_cost AS computedCost
             FROM request r
             WHERE r.key_id = :keyId
-              AND (:fromTs IS NULL OR r.requested_at >= :fromTs)
-              AND (:toTs IS NULL OR r.requested_at <= :toTs)
+              AND (CAST(:fromTs AS TIMESTAMP) IS NULL OR r.requested_at >= CAST(:fromTs AS TIMESTAMP))
+              AND (CAST(:toTs AS TIMESTAMP) IS NULL OR r.requested_at <= CAST(:toTs AS TIMESTAMP))
             ORDER BY r.requested_at DESC
             """, nativeQuery = true)
     List<KeyRequestProjection> findRequestsByKeyAndRange(
