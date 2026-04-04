@@ -156,7 +156,13 @@ export default function AuditPage({ revokedUsage, missingResponses, setActivePag
 
   const [activeTab, setActiveTab] = useState('revoked')
   const [page, setPage] = useState(1)
+
+  // Revoked tab: live input state vs applied filter state
+  const [revokedInputs, setRevokedInputs] = useState(EMPTY_REVOKED)
   const [revokedFilters, setRevokedFilters] = useState(EMPTY_REVOKED)
+
+  // Missing tab: live input state vs applied filter state
+  const [missingInputs, setMissingInputs] = useState(EMPTY_MISSING)
   const [missingFilters, setMissingFilters] = useState(EMPTY_MISSING)
 
   const handleTabChange = (tab) => {
@@ -164,8 +170,11 @@ export default function AuditPage({ revokedUsage, missingResponses, setActivePag
     setPage(1)
   }
 
-  const setRF = (key, val) => { setRevokedFilters(f => ({ ...f, [key]: val })); setPage(1) }
-  const setMF = (key, val) => { setMissingFilters(f => ({ ...f, [key]: val })); setPage(1) }
+  const handleRevokedSearch = () => { setRevokedFilters({ ...revokedInputs }); setPage(1) }
+  const handleMissingSearch = () => { setMissingFilters({ ...missingInputs }); setPage(1) }
+
+  const handleRevokedClear = () => { setRevokedInputs(EMPTY_REVOKED); setRevokedFilters(EMPTY_REVOKED); setPage(1) }
+  const handleMissingClear = () => { setMissingInputs(EMPTY_MISSING); setMissingFilters(EMPTY_MISSING); setPage(1) }
 
   const filteredRevoked = rv.filter(row => {
     if (revokedFilters.keyId && row.keyId !== Number(revokedFilters.keyId)) return false
@@ -261,43 +270,53 @@ export default function AuditPage({ revokedUsage, missingResponses, setActivePag
                   <input
                     type="number"
                     placeholder="Key ID"
-                    value={revokedFilters.keyId}
-                    onChange={e => setRF('keyId', e.target.value)}
+                    value={revokedInputs.keyId}
+                    onChange={e => setRevokedInputs(f => ({ ...f, keyId: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleRevokedSearch()}
                     style={{ ...FILTER_INPUT, width: 90 }}
                   />
                   <input
                     type="number"
                     placeholder="Proj ID"
-                    value={revokedFilters.projectId}
-                    onChange={e => setRF('projectId', e.target.value)}
+                    value={revokedInputs.projectId}
+                    onChange={e => setRevokedInputs(f => ({ ...f, projectId: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleRevokedSearch()}
                     style={{ ...FILTER_INPUT, width: 90 }}
                   />
                   <input
                     type="date"
-                    value={revokedFilters.from}
-                    onChange={e => setRF('from', e.target.value)}
+                    value={revokedInputs.from}
+                    onChange={e => setRevokedInputs(f => ({ ...f, from: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleRevokedSearch()}
                     style={{ ...FILTER_INPUT, width: 150 }}
                   />
                   <input
                     type="date"
-                    value={revokedFilters.to}
-                    onChange={e => setRF('to', e.target.value)}
+                    value={revokedInputs.to}
+                    onChange={e => setRevokedInputs(f => ({ ...f, to: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleRevokedSearch()}
                     style={{ ...FILTER_INPUT, width: 150 }}
                   />
                   <button
-                    onClick={() => { setRevokedFilters(EMPTY_REVOKED); setPage(1) }}
+                    onClick={handleRevokedClear}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: '#9B9B9B', padding: '0 4px' }}
                     onMouseEnter={e => e.currentTarget.style.color = '#1A1A2E'}
                     onMouseLeave={e => e.currentTarget.style.color = '#9B9B9B'}
                   >
                     Clear All
                   </button>
+                  <button
+                    onClick={handleRevokedSearch}
+                    style={{ height: 32, padding: '0 16px', background: '#1A1A2E', color: '#fff', border: 'none', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Search
+                  </button>
                 </>
               ) : (
                 <>
                   <select
-                    value={missingFilters.status}
-                    onChange={e => setMF('status', e.target.value)}
+                    value={missingInputs.status}
+                    onChange={e => setMissingInputs(f => ({ ...f, status: e.target.value }))}
                     style={{ ...FILTER_INPUT, width: 120 }}
                   >
                     <option value="">All Status</option>
@@ -308,36 +327,46 @@ export default function AuditPage({ revokedUsage, missingResponses, setActivePag
                   <input
                     type="number"
                     placeholder="Key ID"
-                    value={missingFilters.keyId}
-                    onChange={e => setMF('keyId', e.target.value)}
+                    value={missingInputs.keyId}
+                    onChange={e => setMissingInputs(f => ({ ...f, keyId: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleMissingSearch()}
                     style={{ ...FILTER_INPUT, width: 90 }}
                   />
                   <input
                     type="number"
                     placeholder="Proj ID"
-                    value={missingFilters.projectId}
-                    onChange={e => setMF('projectId', e.target.value)}
+                    value={missingInputs.projectId}
+                    onChange={e => setMissingInputs(f => ({ ...f, projectId: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleMissingSearch()}
                     style={{ ...FILTER_INPUT, width: 90 }}
                   />
                   <input
                     type="date"
-                    value={missingFilters.from}
-                    onChange={e => setMF('from', e.target.value)}
+                    value={missingInputs.from}
+                    onChange={e => setMissingInputs(f => ({ ...f, from: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleMissingSearch()}
                     style={{ ...FILTER_INPUT, width: 150 }}
                   />
                   <input
                     type="date"
-                    value={missingFilters.to}
-                    onChange={e => setMF('to', e.target.value)}
+                    value={missingInputs.to}
+                    onChange={e => setMissingInputs(f => ({ ...f, to: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleMissingSearch()}
                     style={{ ...FILTER_INPUT, width: 150 }}
                   />
                   <button
-                    onClick={() => { setMissingFilters(EMPTY_MISSING); setPage(1) }}
+                    onClick={handleMissingClear}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: '#9B9B9B', padding: '0 4px' }}
                     onMouseEnter={e => e.currentTarget.style.color = '#1A1A2E'}
                     onMouseLeave={e => e.currentTarget.style.color = '#9B9B9B'}
                   >
                     Clear All
+                  </button>
+                  <button
+                    onClick={handleMissingSearch}
+                    style={{ height: 32, padding: '0 16px', background: '#1A1A2E', color: '#fff', border: 'none', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Search
                   </button>
                 </>
               )}
