@@ -77,10 +77,10 @@ export default function Overview({
         </motion.div>
       </div>
 
-      <div style={{ gridArea: 'table', alignSelf: 'stretch', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ gridArea: 'table', alignSelf: 'stretch', display: 'flex', flexDirection: 'column' }}>
         <motion.div
           layoutId="audit-card"
-          style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+          style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}
           whileHover={{ scale: 1.01 }}
           transition={{ duration: 0.15 }}
           onMouseEnter={() => setHovered('audit')}
