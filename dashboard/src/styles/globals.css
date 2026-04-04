@@ -1,5 +1,10 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+.table-scroll::-webkit-scrollbar { width: 4px; }
+.table-scroll::-webkit-scrollbar-track { background: transparent; }
+.table-scroll::-webkit-scrollbar-thumb { background: #E0E0DC; border-radius: 4px; }
+.table-scroll::-webkit-scrollbar-thumb:hover { background: #C0C0BC; }
+
 body {
   font-family: 'Inter', sans-serif;
   background: #F4F4F0;

@@ -140,10 +140,44 @@ export default function RequestTable() {
     fetchKeyRequests(keyId, fromDate, toDate).finally(() => setLoading(false))
   }
 
+  const COLGROUP_KEY = (
+    <colgroup>
+      <col style={{ width: '10%' }} />
+      <col style={{ width: '18%' }} />
+      <col style={{ width: '12%' }} />
+      <col style={{ width: '11%' }} />
+      <col style={{ width: '11%' }} />
+      <col style={{ width: '14%' }} />
+      <col style={{ width: '12%' }} />
+    </colgroup>
+  )
+
+  const COLGROUP_AUDIT = (
+    <colgroup>
+      <col style={{ width: '20%' }} />
+      <col style={{ width: '14%' }} />
+      <col style={{ width: '13%' }} />
+      <col style={{ width: '13%' }} />
+      <col style={{ width: '20%' }} />
+      <col style={{ width: '20%' }} />
+    </colgroup>
+  )
+
   return (
-    <div id="audit" style={{ background: 'white', borderRadius: 20, padding: 24, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid #F0F0EE', flexShrink: 0 }}>
+    <div id="audit" style={{
+      background: 'white',
+      borderRadius: 20,
+      padding: 24,
+      height: '100%',
+      minHeight: 360,
+      boxSizing: 'border-box',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+    }}>
+
+      {/* Tabs — fixed */}
+      <div style={{ flexShrink: 0, display: 'flex', gap: 0, marginBottom: 16, borderBottom: '1px solid #F0F0EE' }}>
         {[
           { key: 'keyRequests', label: 'Key Requests' },
           { key: 'auditFlags', label: 'Audit Flags' },
@@ -169,158 +203,134 @@ export default function RequestTable() {
         ))}
       </div>
 
-      {/* Content */}
-      <div style={{ transition: 'opacity 200ms, transform 200ms', flex: 1, overflowY: 'auto' }}>
-        {activeTab === 'keyRequests' && (
+      {/* Controls — fixed, only shown on Key Requests tab */}
+      {activeTab === 'keyRequests' && (
+        <div style={{ flexShrink: 0, display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="number"
+            placeholder="Key ID"
+            value={keyId}
+            onChange={e => setKeyId(e.target.value)}
+            style={{ width: 80, padding: '6px 10px', border: '1px solid #F0F0EE', borderRadius: 8, fontSize: '0.875rem', outline: 'none' }}
+          />
+          <input
+            type="datetime-local"
+            value={fromDate}
+            onChange={e => setFromDate(e.target.value)}
+            style={{ padding: '6px 10px', border: '1px solid #F0F0EE', borderRadius: 8, fontSize: '0.875rem', outline: 'none' }}
+          />
+          <input
+            type="datetime-local"
+            value={toDate}
+            onChange={e => setToDate(e.target.value)}
+            style={{ padding: '6px 10px', border: '1px solid #F0F0EE', borderRadius: 8, fontSize: '0.875rem', outline: 'none' }}
+          />
+          <button
+            onClick={handleSearch}
+            style={{ padding: '6px 16px', background: '#1A1A2E', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: '0.875rem' }}
+          >
+            Search
+          </button>
+        </div>
+      )}
+
+      {/* Table area — fills remaining height */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+
+        {loading ? (
+          <div style={{ padding: '4px 0' }}>
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="skeleton" style={{ height: 40, marginBottom: 8 }} />
+            ))}
+          </div>
+        ) : activeTab === 'keyRequests' ? (
           <>
-            {/* Controls */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                type="number"
-                placeholder="Key ID"
-                value={keyId}
-                onChange={e => setKeyId(e.target.value)}
-                style={{
-                  width: 80,
-                  padding: '6px 10px',
-                  border: '1px solid #F0F0EE',
-                  borderRadius: 8,
-                  fontSize: '0.875rem',
-                  outline: 'none',
-                }}
-              />
-              <input
-                type="datetime-local"
-                value={fromDate}
-                onChange={e => setFromDate(e.target.value)}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #F0F0EE',
-                  borderRadius: 8,
-                  fontSize: '0.875rem',
-                  outline: 'none',
-                }}
-              />
-              <input
-                type="datetime-local"
-                value={toDate}
-                onChange={e => setToDate(e.target.value)}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #F0F0EE',
-                  borderRadius: 8,
-                  fontSize: '0.875rem',
-                  outline: 'none',
-                }}
-              />
-              <button
-                onClick={handleSearch}
-                style={{
-                  padding: '6px 16px',
-                  background: '#1A1A2E',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
-              >
-                Search
-              </button>
+            {/* Sticky header */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              {COLGROUP_KEY}
+              <thead>
+                <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
+                  <th style={TH_STYLE}>Request ID</th>
+                  <th style={TH_STYLE}>Requested At</th>
+                  <th style={TH_STYLE}>Status</th>
+                  <th style={TH_STYLE}>Model ID</th>
+                  <th style={TH_STYLE}>Project ID</th>
+                  <th style={{ ...TH_STYLE, textAlign: 'right' }}>Input Tokens</th>
+                  <th style={{ ...TH_STYLE, textAlign: 'right' }}>Cost</th>
+                </tr>
+              </thead>
+            </table>
+            {/* Scrollable body */}
+            <div className="table-scroll" style={{ flex: 1, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                {COLGROUP_KEY}
+                <tbody>
+                  {keyRequestsData.map(row => (
+                    <tr key={row.requestId} style={{ borderBottom: '1px solid #F0F0EE' }}>
+                      <td style={{ ...TD_STYLE, fontFamily: 'monospace', fontSize: '0.8rem' }}>#{row.requestId}</td>
+                      <td style={TD_STYLE}>{fmtDate(row.requestedAt)}</td>
+                      <td style={TD_STYLE}><StatusBadge status={row.status} /></td>
+                      <td style={TD_STYLE}><GrayPill>Model {row.modelId}</GrayPill></td>
+                      <td style={TD_STYLE}><GrayPill>Proj {row.projectId}</GrayPill></td>
+                      <td style={{ ...TD_STYLE, textAlign: 'right' }}>{row.inputTokens?.toLocaleString() ?? '—'}</td>
+                      <td style={{ ...TD_STYLE, textAlign: 'right', fontFamily: 'monospace' }}>
+                        ${(row.computedCost ?? 0).toFixed(4)}
+                      </td>
+                    </tr>
+                  ))}
+                  {keyRequestsData.length === 0 && (
+                    <tr>
+                      <td colSpan={7} style={{ ...TD_STYLE, textAlign: 'center', color: '#9B9B9B' }}>No records found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-
-            {loading ? (
-              <div>
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="skeleton" style={{ height: 40, marginBottom: 8 }} />
-                ))}
-              </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
-                      <th style={TH_STYLE}>Request ID</th>
-                      <th style={TH_STYLE}>Requested At</th>
-                      <th style={TH_STYLE}>Status</th>
-                      <th style={TH_STYLE}>Model ID</th>
-                      <th style={TH_STYLE}>Project ID</th>
-                      <th style={{ ...TH_STYLE, textAlign: 'right' }}>Input Tokens</th>
-                      <th style={{ ...TH_STYLE, textAlign: 'right' }}>Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {keyRequestsData.map(row => (
-                      <tr key={row.requestId} style={{ borderBottom: '1px solid #F0F0EE' }}>
-                        <td style={{ ...TD_STYLE, fontFamily: 'monospace', fontSize: '0.8rem' }}>#{row.requestId}</td>
-                        <td style={TD_STYLE}>{fmtDate(row.requestedAt)}</td>
-                        <td style={TD_STYLE}><StatusBadge status={row.status} /></td>
-                        <td style={TD_STYLE}><GrayPill>Model {row.modelId}</GrayPill></td>
-                        <td style={TD_STYLE}><GrayPill>Proj {row.projectId}</GrayPill></td>
-                        <td style={{ ...TD_STYLE, textAlign: 'right' }}>{row.inputTokens?.toLocaleString() ?? '—'}</td>
-                        <td style={{ ...TD_STYLE, textAlign: 'right', fontFamily: 'monospace' }}>
-                          ${(row.computedCost ?? 0).toFixed(4)}
-                        </td>
-                      </tr>
-                    ))}
-                    {keyRequestsData.length === 0 && (
-                      <tr>
-                        <td colSpan={7} style={{ ...TD_STYLE, textAlign: 'center', color: '#9B9B9B' }}>No records found</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </>
-        )}
-
-        {activeTab === 'auditFlags' && (
+        ) : (
           <>
-            {loading ? (
-              <div>
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="skeleton" style={{ height: 40, marginBottom: 8 }} />
-                ))}
-              </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
-                      <th style={TH_STYLE}>Type</th>
-                      <th style={TH_STYLE}>Request ID</th>
-                      <th style={TH_STYLE}>Key ID</th>
-                      <th style={TH_STYLE}>Project ID</th>
-                      <th style={TH_STYLE}>Requested At</th>
-                      <th style={TH_STYLE}>Detail</th>
+            {/* Sticky header */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              {COLGROUP_AUDIT}
+              <thead>
+                <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
+                  <th style={TH_STYLE}>Type</th>
+                  <th style={TH_STYLE}>Request ID</th>
+                  <th style={TH_STYLE}>Key ID</th>
+                  <th style={TH_STYLE}>Project ID</th>
+                  <th style={TH_STYLE}>Requested At</th>
+                  <th style={TH_STYLE}>Detail</th>
+                </tr>
+              </thead>
+            </table>
+            {/* Scrollable body */}
+            <div className="table-scroll" style={{ flex: 1, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                {COLGROUP_AUDIT}
+                <tbody>
+                  {auditFlagsData.map((row, idx) => (
+                    <tr key={`${row.type}-${row.requestId}-${idx}`} style={{ borderBottom: '1px solid #F0F0EE' }}>
+                      <td style={TD_STYLE}><TypeBadge type={row.type} /></td>
+                      <td style={{ ...TD_STYLE, fontFamily: 'monospace', fontSize: '0.8rem' }}>#{row.requestId}</td>
+                      <td style={TD_STYLE}><GrayPill>Key {row.keyId}</GrayPill></td>
+                      <td style={TD_STYLE}><GrayPill>Proj {row.projectId}</GrayPill></td>
+                      <td style={TD_STYLE}>{fmtDate(row.requestedAt)}</td>
+                      <td style={TD_STYLE}>
+                        {row.type === 'REVOKED_KEY'
+                          ? <span style={{ color: '#9B9B9B', fontSize: '0.8rem' }}>Revoked: {fmtDate(row.revokedAt)}</span>
+                          : <StatusBadge status={row.status} />
+                        }
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {auditFlagsData.map((row, idx) => (
-                      <tr key={`${row.type}-${row.requestId}-${idx}`} style={{ borderBottom: '1px solid #F0F0EE' }}>
-                        <td style={TD_STYLE}><TypeBadge type={row.type} /></td>
-                        <td style={{ ...TD_STYLE, fontFamily: 'monospace', fontSize: '0.8rem' }}>#{row.requestId}</td>
-                        <td style={TD_STYLE}><GrayPill>Key {row.keyId}</GrayPill></td>
-                        <td style={TD_STYLE}><GrayPill>Proj {row.projectId}</GrayPill></td>
-                        <td style={TD_STYLE}>{fmtDate(row.requestedAt)}</td>
-                        <td style={TD_STYLE}>
-                          {row.type === 'REVOKED_KEY'
-                            ? <span style={{ color: '#9B9B9B', fontSize: '0.8rem' }}>Revoked: {fmtDate(row.revokedAt)}</span>
-                            : <StatusBadge status={row.status} />
-                          }
-                        </td>
-                      </tr>
-                    ))}
-                    {auditFlagsData.length === 0 && (
-                      <tr>
-                        <td colSpan={6} style={{ ...TD_STYLE, textAlign: 'center', color: '#9B9B9B' }}>No audit flags found</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  ))}
+                  {auditFlagsData.length === 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ ...TD_STYLE, textAlign: 'center', color: '#9B9B9B' }}>No audit flags found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </>
         )}
       </div>
