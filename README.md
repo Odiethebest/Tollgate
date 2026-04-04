@@ -22,7 +22,7 @@
 - [Key Design Decisions](#key-design-decisions)
 - [Engineering Highlights](doc/engineering-highlights.md)
 - [Frontend Architecture](doc/frontend-architecture.md)
-- [Design Language](doc/design-language.md)
+- [Dashboard Design Language](doc/dashboard-design-language.md)
 - [Team](#team)
 
 ---
