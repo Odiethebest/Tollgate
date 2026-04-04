@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { motion } from 'framer-motion'
 import { Zap, Send } from 'lucide-react'
 
@@ -71,18 +71,19 @@ const LABEL_STYLE = {
   display: 'block',
 }
 
-export default function GatewayPage({ setActivePage }) {
-  const [apiKey, setApiKey]         = useState('')
-  const [modelId, setModelId]       = useState(1)
-  const [inputTokens, setInputTokens] = useState(300)
-  const [prompt, setPrompt]         = useState('')
-  const [idempotencyKey, setIdem]   = useState('')
-  const [loading, setLoading]       = useState(false)
-  const [response, setResponse]     = useState(null)
-  const [error, setError]           = useState(null)
-  const [history, setHistory]       = useState([])
-  const [submitted, setSubmitted]   = useState(false)
-
+export default function GatewayPage({
+  setActivePage, onSubmitSuccess,
+  apiKey, setApiKey,
+  modelId, setModelId,
+  inputTokens, setInputTokens,
+  prompt, setPrompt,
+  idempotencyKey, setIdempotencyKey,
+  loading, setLoading,
+  response, setResponse,
+  error, setError,
+  history, setHistory,
+  submitted, setSubmitted,
+}) {
   const isDisabled = loading || !apiKey || !modelId || !inputTokens || !prompt
 
   const handleSubmit = async () => {
@@ -118,6 +119,7 @@ export default function GatewayPage({ setActivePage }) {
           { ...data, submittedAt: new Date().toISOString() },
           ...prev,
         ].slice(0, 10))
+        onSubmitSuccess?.()
       } else {
         setError(data)
       }
@@ -217,7 +219,7 @@ export default function GatewayPage({ setActivePage }) {
                   type="text"
                   placeholder="optional"
                   value={idempotencyKey}
-                  onChange={e => setIdem(e.target.value)}
+                  onChange={e => setIdempotencyKey(e.target.value)}
                   style={INPUT_STYLE}
                 />
               </div>

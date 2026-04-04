@@ -34,7 +34,7 @@ function ViewDetailsButton({ onClick, visible }) {
 }
 
 export default function Overview({
-  modelsStats, revokedUsage, missingResponses, quotaAlerts, loading, setActivePage
+  modelsStats, revokedUsage, missingResponses, quotaAlerts, loading, setActivePage, onRefresh
 }) {
   const [hovered, setHovered] = useState(null)
 
@@ -58,7 +58,7 @@ export default function Overview({
             revokedUsage={revokedUsage}
             missingResponses={missingResponses}
             loading={loading}
-            onRefresh={() => window.location.reload()}
+            onRefresh={onRefresh}
           />
         </motion.div>
       </div>
