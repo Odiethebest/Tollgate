@@ -83,13 +83,13 @@ Full coral-to-orange gradient. Displays the total request count derived by summi
 
 A sparkline sits below the number. Because the backend has no time-series endpoint, the sparkline uses static mock data to suggest trend shape.
 
-Two sub-stats appear at the bottom:
+Three sub-stats appear at the bottom, matching the three-column layout of the reference design:
 
 **Success Rate** — weighted average of each model's `successRate` field, weighted by `totalRequests`.
 
-**Audit Flags** — sum of the response list lengths from `GET /api/audit/revoked-usage` and `GET /api/audit/missing-responses`.
+**Non-success Rate** — `1 - weightedSuccessRate`, derived from the same model stats response. This covers all failed and denied requests as a single figure. Labeling it "Non-success" is intentional: the backend does not break the remainder into failed versus denied individually, so a more specific label would misrepresent the data.
 
-Failed and Denied are not shown as separate percentages. The `/api/reports/models/stats` query computes `successRate` as success divided by total; it does not break the remainder into failed versus denied. No existing endpoint provides those individual rates.
+**Audit Flags** — sum of the response list lengths from `GET /api/audit/revoked-usage` and `GET /api/audit/missing-responses`.
 
 ---
 
@@ -102,7 +102,9 @@ The donut has two segments:
 - **Warning** — projects where `usagePct` is between 80 and 100, shown in amber
 - **Critical** — projects where `usagePct` exceeds 100, shown in red
 
-An "Under quota" segment is not shown. The endpoint filters at the SQL level to rows above the threshold, so healthy projects are not included in the response and their count cannot be derived from it.
+An "Under quota" segment is not shown. The endpoint filters at the SQL level to rows above the threshold, so healthy projects are not included in the response.
+
+**Empty state:** when the API returns an empty array, the component renders a single full-circle in Success green with the label "All Clear" at the center. This prevents a blank chart when all projects are healthy, which is the normal operating state.
 
 The center of the donut displays the total number of projects in alert state. The legend shows each segment's project count and average `usagePct`. Hovering a segment shows a tooltip with the project name and exact percentage.
 
@@ -114,12 +116,14 @@ White card titled "Model Performance". Data comes from `GET /api/reports/models/
 
 The X axis has one group per model, labeled as `provider/modelName` from the response fields. A time-based axis is not available because this endpoint returns global aggregates with no time dimension.
 
-Each group contains two bars:
+Each group contains two bars sharing a single left axis:
 
-- **Success Rate** — `successRate` field, plotted against the left axis as a percentage
-- **Total Requests** — `totalRequests` field, plotted against the right axis as a count
+- **Success Rate** — `successRate` as a percentage, 0–100%
+- **Total Requests** — `totalRequests` as a count, scaled independently on the right axis
 
-An overlay line plots `avgLatencyMs` against a third axis in milliseconds. Hovering a bar shows a tooltip with the exact value.
+Latency is not plotted as a third axis. Three simultaneous axes on a narrow card produce an unreadable chart. Instead, each model group has a small latency annotation below its bars — a muted text label showing `avgLatencyMs` in milliseconds. This keeps the metric visible without adding axis complexity.
+
+Hovering a bar shows a tooltip with the exact value.
 
 ---
 
@@ -131,7 +135,9 @@ Two-tab table.
 
 Fetches `GET /api/audit/keys/{keyId}/requests` with optional `from` and `to` query parameters in ISO 8601 format.
 
-The endpoint requires a `keyId` path parameter. There is no backend endpoint that returns requests across all keys. The tab therefore shows a Key ID input and an optional date range picker above the table. The table remains empty until a Key ID is entered.
+The endpoint requires a `keyId` path parameter. There is no backend endpoint that returns requests across all keys. The tab therefore shows a Key ID input and an optional date range picker above the table.
+
+The Key ID input defaults to `1`, which corresponds to a key with request history in the seed dataset. This ensures the table has visible data on first load rather than showing an empty state that could be mistaken for an error. The user can clear or change the value at any time.
 
 Columns map directly to the `KeyRequestProjection` fields returned by the endpoint:
 
@@ -186,7 +192,7 @@ Each pill: icon on a colored square with 16px border-radius, large number, label
 | Hero success rate | `GET /api/reports/models/stats` | Weighted average of `successRate` by `totalRequests` |
 | Hero audit flags | `GET /api/audit/revoked-usage` + `GET /api/audit/missing-responses` | Sum of both list lengths |
 | Quota donut | `GET /api/reports/quota-alerts` | Only projects above 80%; split into Warning and Critical by `usagePct` |
-| Model bar chart | `GET /api/reports/models/stats` | All-time aggregate per model |
+| Model bar chart | `GET /api/reports/models/stats` | All-time aggregate per model; latency shown as inline annotation, not a third axis |
 | Key Requests tab | `GET /api/audit/keys/{keyId}/requests?from=&to=` | Requires user-supplied Key ID |
 | Audit Flags tab | `GET /api/audit/revoked-usage` + `GET /api/audit/missing-responses` | Merged with a Type column |
 | Compliance Issues pill | `GET /api/audit/revoked-usage` | List length |
