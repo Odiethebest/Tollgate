@@ -7,7 +7,7 @@ import RequestTable from '../components/RequestTable.jsx'
 import StatPill from '../components/StatPill.jsx'
 import { Shield, AlertTriangle, Activity } from 'lucide-react'
 
-function ViewDetailsButton({ onClick }) {
+function ViewDetailsButton({ onClick, visible }) {
   const [hovered, setHovered] = useState(false)
   return (
     <div
@@ -22,8 +22,10 @@ function ViewDetailsButton({ onClick }) {
         color: hovered ? '#1A1A2E' : '#9B9B9B',
         cursor: 'pointer',
         userSelect: 'none',
-        transition: 'color 0.15s',
+        transition: 'color 0.15s, opacity 0.15s',
         zIndex: 10,
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? 'auto' : 'none',
       }}
     >
       View Details →
@@ -34,6 +36,8 @@ function ViewDetailsButton({ onClick }) {
 export default function Overview({
   modelsStats, revokedUsage, missingResponses, quotaAlerts, loading, setActivePage
 }) {
+  const [hovered, setHovered] = useState(null)
+
   return (
     <div style={{
       display: 'grid',
@@ -59,23 +63,38 @@ export default function Overview({
       </div>
 
       <div style={{ gridArea: 'quota' }}>
-        <motion.div layoutId="quota-card" style={{ position: 'relative' }}>
+        <motion.div
+          layoutId="quota-card"
+          style={{ position: 'relative' }}
+          onMouseEnter={() => setHovered('quota')}
+          onMouseLeave={() => setHovered(null)}
+        >
           <QuotaDonut data={quotaAlerts} loading={loading} />
-          <ViewDetailsButton onClick={() => setActivePage('quota')} />
+          <ViewDetailsButton onClick={() => setActivePage('quota')} visible={hovered === 'quota'} />
         </motion.div>
       </div>
 
       <div style={{ gridArea: 'table' }}>
-        <motion.div layoutId="audit-card" style={{ position: 'relative' }}>
+        <motion.div
+          layoutId="audit-card"
+          style={{ position: 'relative' }}
+          onMouseEnter={() => setHovered('audit')}
+          onMouseLeave={() => setHovered(null)}
+        >
           <RequestTable />
-          <ViewDetailsButton onClick={() => setActivePage('audit')} />
+          <ViewDetailsButton onClick={() => setActivePage('audit')} visible={hovered === 'audit'} />
         </motion.div>
       </div>
 
       <div style={{ gridArea: 'models' }}>
-        <motion.div layoutId="models-card" style={{ position: 'relative' }}>
+        <motion.div
+          layoutId="models-card"
+          style={{ position: 'relative' }}
+          onMouseEnter={() => setHovered('models')}
+          onMouseLeave={() => setHovered(null)}
+        >
           <ModelBarChart data={modelsStats} loading={loading} chartHeight={200} />
-          <ViewDetailsButton onClick={() => setActivePage('models')} />
+          <ViewDetailsButton onClick={() => setActivePage('models')} visible={hovered === 'models'} />
         </motion.div>
       </div>
 
