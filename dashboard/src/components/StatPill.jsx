@@ -5,7 +5,7 @@ export default function StatPill({ icon: Icon, iconBg, iconColor, value, label, 
     <div style={{
       background: 'white',
       borderRadius: 20,
-      padding: '16px 20px',
+      padding: '20px 24px',
       boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
       display: 'flex',
       alignItems: 'center',
@@ -23,7 +23,7 @@ export default function StatPill({ icon: Icon, iconBg, iconColor, value, label, 
       }}>
         <Icon size={22} color={iconColor} />
       </div>
-      <div>
+      <div style={{ flex: 1 }}>
         <div style={{ fontSize: '1.8rem', fontWeight: 600, color: alertColor, lineHeight: 1.1 }}>{value}</div>
         <div style={{ fontSize: '0.8rem', color: '#9B9B9B', marginTop: 2 }}>{label}</div>
       </div>

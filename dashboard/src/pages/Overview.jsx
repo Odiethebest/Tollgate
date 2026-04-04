@@ -30,10 +30,19 @@ export default function Overview({
   const [hovered, setHovered] = useState(null)
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '55fr 45fr', gap: 24, alignItems: 'start' }}>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '55fr 45fr',
+      gridTemplateAreas: `
+        "hero  quota"
+        "table models"
+        "pills pills"
+      `,
+      gap: 24,
+      alignItems: 'start',
+    }}>
 
-      {/* Left column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ gridArea: 'hero' }}>
         <motion.div layoutId="hero-card">
           <HeroCard
             modelsStats={modelsStats}
@@ -42,7 +51,24 @@ export default function Overview({
             loading={loading}
           />
         </motion.div>
+      </div>
 
+      <div style={{ gridArea: 'quota' }}>
+        <motion.div
+          layoutId="quota-card"
+          style={{ position: 'relative', borderRadius: 20, cursor: 'pointer' }}
+          onClick={() => setActivePage('quota')}
+          whileHover={{ scale: 1.01 }}
+          transition={{ duration: 0.15 }}
+          onMouseEnter={() => setHovered('quota')}
+          onMouseLeave={() => setHovered(null)}
+        >
+          <QuotaDonut data={quotaAlerts} loading={loading} />
+          <ViewDetailsLabel visible={hovered === 'quota'} />
+        </motion.div>
+      </div>
+
+      <div style={{ gridArea: 'table' }}>
         <motion.div
           layoutId="audit-card"
           style={{ position: 'relative', borderRadius: 20, cursor: 'pointer' }}
@@ -57,21 +83,7 @@ export default function Overview({
         </motion.div>
       </div>
 
-      {/* Right column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <motion.div
-          layoutId="quota-card"
-          style={{ position: 'relative', borderRadius: 20, cursor: 'pointer' }}
-          onClick={() => setActivePage('quota')}
-          whileHover={{ scale: 1.01 }}
-          transition={{ duration: 0.15 }}
-          onMouseEnter={() => setHovered('quota')}
-          onMouseLeave={() => setHovered(null)}
-        >
-          <QuotaDonut data={quotaAlerts} loading={loading} />
-          <ViewDetailsLabel visible={hovered === 'quota'} />
-        </motion.div>
-
+      <div style={{ gridArea: 'models' }}>
         <motion.div
           layoutId="models-card"
           style={{ position: 'relative', borderRadius: 20, cursor: 'pointer' }}
@@ -84,7 +96,15 @@ export default function Overview({
           <ModelBarChart data={modelsStats} loading={loading} chartHeight={200} />
           <ViewDetailsLabel visible={hovered === 'models'} />
         </motion.div>
+      </div>
 
+      {/* Pills — full-width row, 3 equal columns */}
+      <div style={{
+        gridArea: 'pills',
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr 1fr',
+        gap: 24,
+      }}>
         <StatPill
           icon={Shield}
           iconBg="rgba(232,69,69,0.1)"
