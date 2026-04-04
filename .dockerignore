@@ -1,0 +1,9 @@
+.git
+.idea
+.claude
+target
+out
+phase4
+doc/history
+.env
+.DS_Store

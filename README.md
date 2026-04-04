@@ -214,6 +214,12 @@ Run the service:
 mvn spring-boot:run
 ```
 
+Or run the full local stack (app + PostgreSQL) with Docker:
+
+```bash
+docker compose up --build
+```
+
 The app starts on `http://localhost:8080`. Schema and seed data are applied automatically on first boot.
 
 ### Quick Smoke Test

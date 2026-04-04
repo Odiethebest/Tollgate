@@ -24,7 +24,32 @@ It is intended for engineers who need a reproducible local setup for development
 
 Important: startup loads seed data automatically. Do not point this local config to production databases.
 
-## 4. Start PostgreSQL Locally (Docker)
+## 4. Quick Start with Docker Compose (Recommended)
+
+From project root:
+
+```bash
+docker compose up --build
+```
+
+This starts:
+
+- `db` (PostgreSQL 15) on `localhost:5432`
+- `app` (Spring Boot backend) on `localhost:8080`
+
+To stop and remove containers:
+
+```bash
+docker compose down
+```
+
+To also remove PostgreSQL volume data:
+
+```bash
+docker compose down -v
+```
+
+## 5. Start PostgreSQL Locally (Docker)
 
 ```bash
 docker run --name tollgate-pg \
@@ -43,7 +68,7 @@ docker exec -it tollgate-pg pg_isready -U demo_user -d llm_gateway
 
 Expected output includes `accepting connections`.
 
-## 5. Configure Environment Variables
+## 6. Configure Environment Variables
 
 Use the provided template:
 
@@ -73,7 +98,7 @@ Verify:
 env | grep SPRING_DATASOURCE
 ```
 
-## 6. Run the Backend
+## 7. Run the Backend
 
 From project root:
 
@@ -87,7 +112,7 @@ Successful startup logs should include:
 - `Tomcat initialized with port 8080`
 - `Started DemoApplication`
 
-## 7. End-to-End API Smoke Test (`curl`)
+## 8. End-to-End API Smoke Test (`curl`)
 
 ### 7.1 Create a tenant
 
@@ -167,7 +192,7 @@ curl -sS http://localhost:8080/api/reports/quota-alerts
 curl -sS http://localhost:8080/api/audit/missing-responses
 ```
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### Error: `SocketTimeoutException: Connect timed out`
 
@@ -194,7 +219,7 @@ psql "postgresql://demo_user:demo_pass@localhost:5432/llm_gateway"
 
 Fix already applied in repository: native report queries use `CAST(...)` (not `::`), compatible with JPA parameter parsing.
 
-## 9. Stop and Clean Up
+## 10. Stop and Clean Up
 
 Stop application: `Ctrl + C`
 
