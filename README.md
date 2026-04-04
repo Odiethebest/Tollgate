@@ -20,6 +20,7 @@
 - [Deployment](#deployment)
 - [Query Workload](#query-workload)
 - [Key Design Decisions](#key-design-decisions)
+- [Engineering Highlights](doc/engineering-highlights.md)
 - [Team](#team)
 
 ---
@@ -310,6 +311,12 @@ Strictly speaking, `project_id` is derivable via `api_key → project`. It is st
 
 **Pessimistic locking for quota**
 Optimistic locking (version column) would require retry logic in the application layer and still allows temporary overshoot. Pessimistic locking (`SELECT ... FOR UPDATE`) serializes quota deductions at the database level with no application-side retries needed, which is the correct choice for a hard budget constraint.
+
+---
+
+## Engineering Highlights
+
+For a deeper walkthrough of the non-obvious technical decisions in this project — including why pessimistic locking was chosen over optimistic, how SHA-256 key hashing is structured, the rationale behind denormalization on `request`, and how transaction boundaries were designed for atomicity — see [`doc/engineering-highlights.md`](doc/engineering-highlights.md).
 
 ---
 
