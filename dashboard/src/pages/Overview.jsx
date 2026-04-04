@@ -66,6 +66,8 @@ export default function Overview({
         <motion.div
           layoutId="quota-card"
           style={{ position: 'relative' }}
+          whileHover={{ scale: 1.01 }}
+          transition={{ duration: 0.15 }}
           onMouseEnter={() => setHovered('quota')}
           onMouseLeave={() => setHovered(null)}
         >
@@ -78,6 +80,8 @@ export default function Overview({
         <motion.div
           layoutId="audit-card"
           style={{ position: 'relative' }}
+          whileHover={{ scale: 1.01 }}
+          transition={{ duration: 0.15 }}
           onMouseEnter={() => setHovered('audit')}
           onMouseLeave={() => setHovered(null)}
         >
@@ -90,6 +94,8 @@ export default function Overview({
         <motion.div
           layoutId="models-card"
           style={{ position: 'relative' }}
+          whileHover={{ scale: 1.01 }}
+          transition={{ duration: 0.15 }}
           onMouseEnter={() => setHovered('models')}
           onMouseLeave={() => setHovered(null)}
         >
