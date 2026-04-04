@@ -21,7 +21,7 @@ export default function Footer() {
       >
         Odie Yang
       </a>
-      {' '}· All rights reserved · CS5200 Database Management Systems · Northeastern University
+      {' '}· Built with Alex Shao · CS5200 · Northeastern University
     </footer>
   )
 }
