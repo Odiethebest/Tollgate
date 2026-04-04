@@ -244,8 +244,8 @@ export default function RequestTable() {
                       <th style={TH_STYLE}>Requested At</th>
                       <th style={TH_STYLE}>Status</th>
                       <th style={TH_STYLE}>Model ID</th>
-                      <th style={TH_STYLE}>Project ID</th>
-                      <th style={{ ...TH_STYLE, textAlign: 'right' }}>Tokens</th>
+                      <th style={{ ...TH_STYLE, textAlign: 'center' }}>Project ID</th>
+                      <th style={{ ...TH_STYLE, textAlign: 'center' }}>Tokens</th>
                       <th style={{ ...TH_STYLE, textAlign: 'right' }}>Cost</th>
                     </tr>
                   </thead>
@@ -256,8 +256,8 @@ export default function RequestTable() {
                         <td style={TD_STYLE}>{fmtDate(row.requestedAt)}</td>
                         <td style={TD_STYLE}><StatusBadge status={row.status} /></td>
                         <td style={TD_STYLE}><GrayPill>Model {row.modelId}</GrayPill></td>
-                        <td style={TD_STYLE}><GrayPill>Proj {row.projectId}</GrayPill></td>
-                        <td style={{ ...TD_STYLE, textAlign: 'right' }}>{row.inputTokens?.toLocaleString() ?? '—'}</td>
+                        <td style={{ ...TD_STYLE, textAlign: 'center' }}><GrayPill>Proj {row.projectId}</GrayPill></td>
+                        <td style={{ ...TD_STYLE, textAlign: 'center' }}>{row.inputTokens?.toLocaleString() ?? '—'}</td>
                         <td style={{ ...TD_STYLE, textAlign: 'right', fontFamily: 'monospace' }}>
                           ${(row.computedCost ?? 0).toFixed(4)}
                         </td>
