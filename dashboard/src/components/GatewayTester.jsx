@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Zap, X, Send } from 'lucide-react'
+// open and onClose are controlled by App via the Header CTA
 import { apiFetch } from '../api/client.js'
 
 const INITIAL_FORM = {
@@ -26,8 +27,7 @@ function StatusBadge({ status }) {
   )
 }
 
-export default function GatewayTester() {
-  const [open, setOpen] = useState(false)
+export default function GatewayTester({ open, onClose }) {
   const [form, setForm] = useState(INITIAL_FORM)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
@@ -74,38 +74,12 @@ export default function GatewayTester() {
 
   return (
     <>
-      {/* Floating button */}
-      <button
-        onClick={() => setOpen(prev => !prev)}
-        style={{
-          position: 'fixed',
-          bottom: 32,
-          right: 32,
-          zIndex: 1000,
-          width: 52,
-          height: 52,
-          borderRadius: '50%',
-          background: open ? '#1A1A2E' : 'linear-gradient(135deg, #FF6B6B, #FF8E53)',
-          border: 'none',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-          transition: 'background 300ms',
-        }}
-        title="Gateway Tester"
-      >
-        {open ? <X color="white" size={20} /> : <Zap color="white" size={20} />}
-      </button>
-
       {/* Drawer */}
       <div
-        id="gateway"
         style={{
           position: 'fixed',
           bottom: 0,
-          left: 72,
+          left: 0,
           right: 0,
           height: 340,
           background: 'white',
@@ -133,7 +107,7 @@ export default function GatewayTester() {
             <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Gateway Tester</span>
           </div>
           <button
-            onClick={() => setOpen(false)}
+            onClick={onClose}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9B9B9B' }}
           >
             <X size={18} />

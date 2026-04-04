@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import Sidebar from './components/Sidebar.jsx'
+import Header from './components/Header.jsx'
+import Footer from './components/Footer.jsx'
 import HeroCard from './components/HeroCard.jsx'
 import QuotaDonut from './components/QuotaDonut.jsx'
 import ModelBarChart from './components/ModelBarChart.jsx'
@@ -10,8 +11,10 @@ import { apiFetch } from './api/client.js'
 import { MOCK } from './data/mock.js'
 import { Shield, AlertTriangle, Activity } from 'lucide-react'
 
+const SECTION_STYLE = { scrollMarginTop: 80 }
+
 export default function App() {
-  const [activeSection, setActiveSection] = useState('overview')
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [modelsStats, setModelsStats] = useState([])
   const [revokedUsage, setRevokedUsage] = useState([])
@@ -32,50 +35,49 @@ export default function App() {
     }).finally(() => setLoading(false))
   }, [])
 
-  const handleNav = (id) => {
-    setActiveSection(id)
-    const el = document.getElementById(id)
-    if (el) el.scrollIntoView({ behavior: 'smooth' })
-  }
-
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F4F4F0' }}>
-      <Sidebar active={activeSection} onNav={handleNav} />
+    <div style={{ minHeight: '100vh', background: '#F4F4F0', display: 'flex', flexDirection: 'column' }}>
+      <Header onTryIt={() => setDrawerOpen(true)} />
 
-      {/* Main content — offset for fixed sidebar */}
       <main style={{
         flex: 1,
-        marginLeft: 72,
         padding: 32,
-        overflowY: 'auto',
-        minHeight: '100vh',
+        maxWidth: 1400,
+        margin: '0 auto',
+        width: '100%',
       }}>
-        {/* Top row: left col + right col */}
-        <div style={{ display: 'flex', gap: 24, marginBottom: 24, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+
           {/* Left column — 55% */}
           <div style={{ width: 'calc(55% - 12px)', display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <HeroCard
-              modelsStats={modelsStats}
-              revokedUsage={revokedUsage}
-              missingResponses={missingResponses}
-              loading={loading}
-            />
-            <RequestTable />
+            <section id="overview" style={SECTION_STYLE}>
+              <HeroCard
+                modelsStats={modelsStats}
+                revokedUsage={revokedUsage}
+                missingResponses={missingResponses}
+                loading={loading}
+              />
+            </section>
+            <section id="audit" style={SECTION_STYLE}>
+              <RequestTable />
+            </section>
           </div>
 
           {/* Right column — 45% */}
           <div style={{ width: 'calc(45% - 12px)', display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <QuotaDonut data={quotaAlerts} loading={loading} />
-            <ModelBarChart data={modelsStats} loading={loading} />
-
-            {/* Three stat pills */}
+            <section id="quota" style={SECTION_STYLE}>
+              <QuotaDonut data={quotaAlerts} loading={loading} />
+            </section>
+            <section id="models" style={SECTION_STYLE}>
+              <ModelBarChart data={modelsStats} loading={loading} />
+            </section>
             <StatPill
               icon={Shield}
               iconBg="rgba(232,69,69,0.1)"
               iconColor="#E84545"
               value={loading ? '—' : revokedUsage.length}
-              label="Revoked Key Requests"
-              alertColor={revokedUsage.length > 0 ? '#E84545' : '#1A1A2E'}
+              label="Compliance Issues"
+              alertColor={revokedUsage.length > 0 ? '#E84545' : '#4CAF82'}
             />
             <StatPill
               icon={AlertTriangle}
@@ -83,7 +85,7 @@ export default function App() {
               iconColor="#F5A623"
               value={loading ? '—' : missingResponses.length}
               label="Missing Responses"
-              alertColor={missingResponses.length > 0 ? '#F5A623' : '#1A1A2E'}
+              alertColor={missingResponses.length > 0 ? '#F5A623' : '#4CAF82'}
             />
             <StatPill
               icon={Activity}
@@ -95,10 +97,13 @@ export default function App() {
             />
           </div>
         </div>
+
+        <section id="gateway" style={SECTION_STYLE} />
       </main>
 
-      {/* Gateway Tester — always mounted */}
-      <GatewayTester />
+      <Footer />
+
+      <GatewayTester open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   )
 }
