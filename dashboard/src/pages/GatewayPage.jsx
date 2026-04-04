@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Zap, Send } from 'lucide-react'
-import { apiFetch } from '../api/client.js'
+
+const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'
 
 function BackButton({ onClick }) {
   return (
@@ -32,6 +33,22 @@ function StatusBadge({ status }) {
   )
 }
 
+function StatChip({ label, value }) {
+  return (
+    <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+      <div style={{ fontSize: '0.75rem', color: '#9B9B9B', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1A1A2E' }}>{value}</div>
+    </div>
+  )
+}
+
+function fmtDate(str) {
+  if (!str) return '—'
+  const d = new Date(str)
+  return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) + ', ' +
+    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
 const INPUT_STYLE = {
   width: '100%',
   border: '1px solid #F0F0EE',
@@ -41,6 +58,7 @@ const INPUT_STYLE = {
   outline: 'none',
   background: '#FAFAFA',
   color: '#1A1A2E',
+  boxSizing: 'border-box',
 }
 
 const LABEL_STYLE = {
@@ -53,61 +71,58 @@ const LABEL_STYLE = {
   display: 'block',
 }
 
-function StatChip({ label, value }) {
-  return (
-    <div style={{
-      background: '#F9F9F7', borderRadius: 10, padding: '12px 16px',
-    }}>
-      <div style={{ fontSize: '0.72rem', color: '#9B9B9B', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{value}</div>
-    </div>
-  )
-}
-
-function fmtDate(str) {
-  if (!str) return '—'
-  const d = new Date(str)
-  return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) + ', ' +
-    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-}
-
-const INITIAL_FORM = { apiKey: '', modelId: '', inputTokens: '300', idempotencyKey: '', prompt: '' }
-
 export default function GatewayPage({ setActivePage }) {
-  const [form, setForm] = useState(INITIAL_FORM)
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState(null)
-  const [history, setHistory] = useState([])
+  const [apiKey, setApiKey]         = useState('')
+  const [modelId, setModelId]       = useState(1)
+  const [inputTokens, setInputTokens] = useState(300)
+  const [prompt, setPrompt]         = useState('')
+  const [idempotencyKey, setIdem]   = useState('')
+  const [loading, setLoading]       = useState(false)
+  const [response, setResponse]     = useState(null)
+  const [error, setError]           = useState(null)
+  const [history, setHistory]       = useState([])
+  const [submitted, setSubmitted]   = useState(false)
 
-  const setField = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
+  const isDisabled = loading || !apiKey || !modelId || !inputTokens || !prompt
 
   const handleSubmit = async () => {
-    if (!form.apiKey || !form.modelId || !form.inputTokens || !form.prompt) return
+    setSubmitted(true)
+    if (!apiKey || !modelId || !inputTokens || !prompt) return
+
     setLoading(true)
-    setResult(null)
+    setResponse(null)
     setError(null)
+
+    const body = {
+      modelId: Number(modelId),
+      inputTokens: Number(inputTokens),
+      prompt,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+    }
+
     try {
-      const res = await apiFetch('/api/gateway/submit', {
+      const res = await fetch(`${BASE}/api/gateway/submit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': form.apiKey },
-        body: JSON.stringify({
-          modelId: Number(form.modelId),
-          inputTokens: Number(form.inputTokens),
-          idempotencyKey: form.idempotencyKey || undefined,
-          prompt: form.prompt,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: JSON.stringify(body),
       })
-      setResult(res)
-      setHistory(prev => [{
-        ts: new Date().toISOString(),
-        modelId: form.modelId,
-        inputTokens: form.inputTokens,
-        cost: res.computedCost,
-        status: res.status || 'success',
-      }, ...prev].slice(0, 10))
+
+      const data = await res.json()
+
+      if (res.ok) {
+        setResponse(data)
+        setHistory(prev => [
+          { ...data, submittedAt: new Date().toISOString() },
+          ...prev,
+        ].slice(0, 10))
+      } else {
+        setError(data)
+      }
     } catch (err) {
-      setError(err.message || 'Request failed')
+      setError({ message: 'Network error — is the backend running?', status: 0 })
     } finally {
       setLoading(false)
     }
@@ -134,28 +149,32 @@ export default function GatewayPage({ setActivePage }) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+              {/* X-API-Key */}
               <div>
                 <label style={LABEL_STYLE}>X-API-Key *</label>
                 <input
                   type="text"
-                  placeholder="sk-..."
-                  value={form.apiKey}
-                  onChange={e => setField('apiKey', e.target.value)}
-                  style={INPUT_STYLE}
+                  placeholder="raw key value"
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  style={{ ...INPUT_STYLE, borderColor: submitted && !apiKey ? '#E84545' : '#F0F0EE' }}
                 />
-                <div style={{ fontSize: '0.72rem', color: '#9B9B9B', marginTop: 3 }}>
-                  Sent as X-API-Key header
-                </div>
+                {submitted && !apiKey
+                  ? <div style={{ fontSize: '0.72rem', color: '#E84545', marginTop: 3 }}>API key is required</div>
+                  : <div style={{ fontSize: '0.72rem', color: '#9B9B9B', marginTop: 3 }}>Sent as X-API-Key header</div>
+                }
               </div>
 
+              {/* Model ID + Input Tokens */}
               <div style={{ display: 'flex', gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <label style={LABEL_STYLE}>Model ID *</label>
                   <input
                     type="number"
                     placeholder="1"
-                    value={form.modelId}
-                    onChange={e => setField('modelId', e.target.value)}
+                    value={modelId}
+                    onChange={e => setModelId(e.target.value)}
                     style={INPUT_STYLE}
                   />
                 </div>
@@ -164,57 +183,81 @@ export default function GatewayPage({ setActivePage }) {
                   <input
                     type="number"
                     placeholder="300"
-                    value={form.inputTokens}
-                    onChange={e => setField('inputTokens', e.target.value)}
+                    value={inputTokens}
+                    onChange={e => setInputTokens(e.target.value)}
                     style={INPUT_STYLE}
                   />
                 </div>
               </div>
 
+              {/* Prompt */}
               <div>
                 <label style={LABEL_STYLE}>Prompt *</label>
                 <textarea
                   rows={3}
                   placeholder="Enter your prompt..."
-                  value={form.prompt}
-                  onChange={e => setField('prompt', e.target.value)}
-                  style={{ ...INPUT_STYLE, resize: 'vertical', fontFamily: 'inherit' }}
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                  style={{
+                    ...INPUT_STYLE,
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    borderColor: submitted && !prompt ? '#E84545' : '#F0F0EE',
+                  }}
                 />
+                {submitted && !prompt && (
+                  <div style={{ fontSize: '0.72rem', color: '#E84545', marginTop: 3 }}>Prompt is required</div>
+                )}
               </div>
 
+              {/* Idempotency Key */}
               <div>
                 <label style={LABEL_STYLE}>Idempotency Key</label>
                 <input
                   type="text"
                   placeholder="optional"
-                  value={form.idempotencyKey}
-                  onChange={e => setField('idempotencyKey', e.target.value)}
+                  value={idempotencyKey}
+                  onChange={e => setIdem(e.target.value)}
                   style={INPUT_STYLE}
                 />
               </div>
 
+              {/* Submit button */}
               <button
                 onClick={handleSubmit}
-                disabled={loading}
+                disabled={isDisabled}
                 style={{
                   width: '100%',
-                  padding: '12px',
-                  background: loading ? '#9B9B9B' : 'linear-gradient(135deg, #FF6B6B, #FF8E53)',
+                  padding: '14px',
+                  background: isDisabled
+                    ? '#ccc'
+                    : 'linear-gradient(135deg, #FF6B6B, #FF8E53)',
                   color: 'white',
                   border: 'none',
                   borderRadius: 12,
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  fontSize: '0.875rem',
+                  fontSize: '0.95rem',
                   fontWeight: 600,
+                  cursor: isDisabled ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 8,
-                  transition: 'opacity 150ms',
+                  transition: 'background 150ms',
                 }}
               >
                 {loading
-                  ? <><span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.6s linear infinite', display: 'inline-block' }} /> Sending...</>
+                  ? <>
+                      <span style={{
+                        width: 14, height: 14,
+                        border: '2px solid rgba(255,255,255,0.4)',
+                        borderTopColor: 'white',
+                        borderRadius: '50%',
+                        animation: 'spin 0.6s linear infinite',
+                        display: 'inline-block',
+                        flexShrink: 0,
+                      }} />
+                      Submitting...
+                    </>
                   : <><Send size={14} /> Submit Request →</>
                 }
               </button>
@@ -225,23 +268,25 @@ export default function GatewayPage({ setActivePage }) {
         {/* Right — Response */}
         <div style={{ flex: 1 }}>
           <div style={{
-            background: 'white', borderRadius: 20, padding: 28,
+            background: '#F9F9F7', borderRadius: 20, padding: 28,
             minHeight: 280, display: 'flex', flexDirection: 'column',
           }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 20, display: 'block' }}>
               RESPONSE
             </span>
 
-            {!result && !error && (
+            {/* Empty state */}
+            {!response && !error && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                <Zap size={36} color="#F0F0EE" />
+                <Zap size={36} color="#E0E0E0" />
                 <div style={{ fontSize: '0.875rem', color: '#9B9B9B', textAlign: 'center' }}>
                   Submit a request to see the live response
                 </div>
               </div>
             )}
 
-            {result && (
+            {/* Success */}
+            {response && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -253,62 +298,111 @@ export default function GatewayPage({ setActivePage }) {
                     background: '#4CAF82', color: 'white',
                     borderRadius: 6, padding: '4px 10px', fontSize: '0.8rem', fontWeight: 600,
                   }}>
-                    200 OK
+                    {response.httpStatus ?? 200} OK
                   </span>
-                  <StatusBadge status={result.status || 'success'} />
+                  <StatusBadge status={response.status || 'success'} />
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <StatChip label="Cost" value={result.computedCost != null ? `$${result.computedCost.toFixed(4)}` : '—'} />
-                  <StatChip label="Output Tokens" value={result.outputTokens ?? '—'} />
-                  <StatChip label="Latency" value={result.latencyMs != null ? `${result.latencyMs}ms` : '—'} />
-                  <StatChip label="Status" value={result.status || '—'} />
+                  <StatChip
+                    label="Cost"
+                    value={response.computedCost != null ? `$${response.computedCost.toFixed(4)}` : '—'}
+                  />
+                  <StatChip
+                    label="Output Tokens"
+                    value={response.outputTokens ?? '—'}
+                  />
+                  <StatChip
+                    label="Latency"
+                    value={response.latencyMs != null ? `${response.latencyMs}ms` : '—'}
+                  />
+                  <StatChip
+                    label="Idempotent"
+                    value={response.idempotent ? 'Yes' : 'No'}
+                  />
+                </div>
+
+                <div style={{ fontSize: '0.8rem', color: '#9B9B9B' }}>
+                  Request #{response.requestId}
                 </div>
               </motion.div>
             )}
 
+            {/* Error */}
             {error && (
-              <div style={{
-                border: '1px solid #E84545', borderRadius: 12, padding: '14px 16px',
-                color: '#E84545', fontSize: '0.875rem', lineHeight: 1.5,
-              }}>
-                {error}
-              </div>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25 }}
+                style={{
+                  border: '1px solid #E84545',
+                  borderRadius: 12,
+                  padding: '16px 18px',
+                  background: '#FFF5F5',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    background: '#E84545', color: 'white',
+                    borderRadius: 6, padding: '3px 8px', fontSize: '0.75rem', fontWeight: 600,
+                  }}>
+                    {error.status || 'Error'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.875rem', color: '#1A1A2E', lineHeight: 1.5 }}>
+                  {error.message || 'An unexpected error occurred.'}
+                </div>
+              </motion.div>
             )}
           </div>
         </div>
       </div>
 
       {/* Request History */}
-      {history.length > 0 && (
-        <div style={{ marginTop: 24, background: 'white', borderRadius: 20, padding: 24 }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 16 }}>
-            SESSION HISTORY
+      <div style={{ marginTop: 24, background: 'white', borderRadius: 20, padding: 24 }}>
+        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 16 }}>
+          SESSION HISTORY
+        </div>
+
+        {history.length === 0 ? (
+          <div style={{ textAlign: 'center', color: '#9B9B9B', fontSize: '0.875rem', padding: '24px 0' }}>
+            No requests submitted yet
           </div>
+        ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
-                {['Time', 'Model ID', 'Input Tokens', 'Cost', 'Status'].map(h => (
-                  <th key={h} style={{ padding: '6px 8px', fontSize: '0.72rem', textTransform: 'uppercase', color: '#9B9B9B', fontWeight: 600, textAlign: 'left', letterSpacing: '0.05em' }}>{h}</th>
+                {['#', 'Submitted At', 'Model ID', 'Input Tokens', 'Cost', 'Status'].map(h => (
+                  <th key={h} style={{ padding: '6px 8px', fontSize: '0.72rem', textTransform: 'uppercase', color: '#9B9B9B', fontWeight: 600, textAlign: 'left', letterSpacing: '0.05em' }}>
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {history.map((row, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid #F0F0EE' }}>
-                  <td style={{ padding: '10px 8px', fontSize: '0.8rem', color: '#9B9B9B' }}>{fmtDate(row.ts)}</td>
-                  <td style={{ padding: '10px 8px', fontSize: '0.8rem' }}>{row.modelId}</td>
-                  <td style={{ padding: '10px 8px', fontSize: '0.8rem' }}>{Number(row.inputTokens).toLocaleString()}</td>
-                  <td style={{ padding: '10px 8px', fontSize: '0.8rem', fontFamily: 'monospace' }}>
-                    {row.cost != null ? `$${row.cost.toFixed(4)}` : '—'}
+                  <td style={{ padding: '10px 8px', fontSize: '0.8rem', color: '#9B9B9B' }}>{history.length - i}</td>
+                  <td style={{ padding: '10px 8px', fontSize: '0.8rem', color: '#9B9B9B' }}>{fmtDate(row.submittedAt)}</td>
+                  <td style={{ padding: '10px 8px', fontSize: '0.8rem' }}>{row.modelId ?? '—'}</td>
+                  <td style={{ padding: '10px 8px', fontSize: '0.8rem' }}>
+                    {row.inputTokens != null ? Number(row.inputTokens).toLocaleString() : '—'}
                   </td>
-                  <td style={{ padding: '10px 8px' }}><StatusBadge status={row.status} /></td>
+                  <td style={{ padding: '10px 8px', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                    {row.computedCost != null ? `$${row.computedCost.toFixed(4)}` : '—'}
+                  </td>
+                  <td style={{ padding: '10px 8px' }}>
+                    <StatusBadge status={row.status || 'success'} />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      )}
+        )}
+      </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </motion.div>
