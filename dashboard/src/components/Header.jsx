@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { Hexagon } from 'lucide-react'
 
 const SECTIONS = [
@@ -9,30 +9,7 @@ const SECTIONS = [
   { id: 'gateway',  label: 'Gateway'  },
 ]
 
-export default function Header({ onTryIt }) {
-  const [active, setActive] = useState('overview')
-
-  useEffect(() => {
-    const observers = SECTIONS.map(({ id }) => {
-      const el = document.getElementById(id)
-      if (!el) return null
-      const obs = new IntersectionObserver(
-        ([entry]) => { if (entry.isIntersecting) setActive(id) },
-        { threshold: 0.3, rootMargin: '-64px 0px 0px 0px' }
-      )
-      obs.observe(el)
-      return obs
-    })
-    return () => observers.forEach(o => o?.disconnect())
-  }, [])
-
-  const handleNavClick = (e, id) => {
-    e.preventDefault()
-    const el = document.getElementById(id)
-    if (el) el.scrollIntoView({ behavior: 'smooth' })
-    setActive(id)
-  }
-
+export default function Header({ activePage, setActivePage }) {
   return (
     <header style={{
       position: 'sticky',
@@ -62,11 +39,7 @@ export default function Header({ onTryIt }) {
           href="https://odieyang.com"
           target="_blank"
           rel="noopener noreferrer"
-          style={{
-            fontSize: '0.75rem',
-            color: '#9B9B9B',
-            textDecoration: 'none',
-          }}
+          style={{ fontSize: '0.75rem', color: '#9B9B9B', textDecoration: 'none' }}
           onMouseEnter={e => { e.currentTarget.style.color = '#1A1A2E'; e.currentTarget.style.textDecoration = 'underline' }}
           onMouseLeave={e => { e.currentTarget.style.color = '#9B9B9B'; e.currentTarget.style.textDecoration = 'none' }}
         >
@@ -74,7 +47,7 @@ export default function Header({ onTryIt }) {
         </a>
       </div>
 
-      {/* Center — section anchors, absolutely centered */}
+      {/* Center — section nav, absolutely centered */}
       <nav style={{
         position: 'absolute',
         left: '50%',
@@ -83,32 +56,36 @@ export default function Header({ onTryIt }) {
         gap: 28,
         alignItems: 'center',
       }}>
-        {SECTIONS.map(({ id, label }) => (
-          <a
-            key={id}
-            href={`#${id}`}
-            onClick={e => handleNavClick(e, id)}
-            style={{
-              fontSize: '0.85rem',
-              fontWeight: 500,
-              color: active === id ? '#1A1A2E' : '#9B9B9B',
-              textDecoration: 'none',
-              paddingBottom: 2,
-              borderBottom: active === id ? '2px solid #FF6B6B' : '2px solid transparent',
-              transition: 'color 150ms, border-color 150ms',
-            }}
-            onMouseEnter={e => { if (active !== id) e.currentTarget.style.color = '#1A1A2E' }}
-            onMouseLeave={e => { if (active !== id) e.currentTarget.style.color = '#9B9B9B' }}
-          >
-            {label}
-          </a>
-        ))}
+        {SECTIONS.map(({ id, label }) => {
+          const isActive = activePage === id
+          return (
+            <button
+              key={id}
+              onClick={() => setActivePage(id)}
+              style={{
+                background: 'none',
+                border: 'none',
+                borderBottom: isActive ? '2px solid #FF6B6B' : '2px solid transparent',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                color: isActive ? '#1A1A2E' : '#9B9B9B',
+                paddingBottom: 2,
+                transition: 'color 150ms, border-color 150ms',
+              }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#1A1A2E' }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#9B9B9B' }}
+            >
+              {label}
+            </button>
+          )
+        })}
       </nav>
 
       {/* Right — CTA */}
       <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
         <button
-          onClick={onTryIt}
+          onClick={() => setActivePage('gateway')}
           style={{
             background: 'linear-gradient(135deg, #FF6B6B, #FF8E53)',
             color: 'white',

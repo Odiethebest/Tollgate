@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import Header from './components/Header.jsx'
 import Footer from './components/Footer.jsx'
-import HeroCard from './components/HeroCard.jsx'
-import QuotaDonut from './components/QuotaDonut.jsx'
-import ModelBarChart from './components/ModelBarChart.jsx'
-import RequestTable from './components/RequestTable.jsx'
-import StatPill from './components/StatPill.jsx'
-import GatewayTester from './components/GatewayTester.jsx'
+import Overview from './pages/Overview.jsx'
+import QuotaPage from './pages/QuotaPage.jsx'
+import ModelsPage from './pages/ModelsPage.jsx'
+import AuditPage from './pages/AuditPage.jsx'
+import GatewayPage from './pages/GatewayPage.jsx'
 import { apiFetch } from './api/client.js'
 import { MOCK } from './data/mock.js'
-import { Shield, AlertTriangle, Activity } from 'lucide-react'
 
-const SECTION_STYLE = { scrollMarginTop: 80 }
+const pageVariants = {
+  initial: { opacity: 0, y: 16 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+  exit:    { opacity: 0, y: -8, transition: { duration: 0.2, ease: 'easeIn' } },
+}
 
 export default function App() {
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [activePage, setActivePage] = useState('overview')
   const [loading, setLoading] = useState(true)
   const [modelsStats, setModelsStats] = useState([])
   const [revokedUsage, setRevokedUsage] = useState([])
@@ -37,7 +40,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#F4F4F0', display: 'flex', flexDirection: 'column' }}>
-      <Header onTryIt={() => setDrawerOpen(true)} />
+      <Header activePage={activePage} setActivePage={setActivePage} />
 
       <main style={{
         flex: 1,
@@ -46,64 +49,27 @@ export default function App() {
         margin: '0 auto',
         width: '100%',
       }}>
-        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-
-          {/* Left column — 55% */}
-          <div style={{ width: 'calc(55% - 12px)', display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <section id="overview" style={SECTION_STYLE}>
-              <HeroCard
+        <AnimatePresence mode="wait">
+          <motion.div key={activePage} variants={pageVariants} initial="initial" animate="animate" exit="exit">
+            {activePage === 'overview' && (
+              <Overview
                 modelsStats={modelsStats}
                 revokedUsage={revokedUsage}
                 missingResponses={missingResponses}
+                quotaAlerts={quotaAlerts}
                 loading={loading}
+                setActivePage={setActivePage}
               />
-            </section>
-            <section id="audit" style={SECTION_STYLE}>
-              <RequestTable />
-            </section>
-          </div>
-
-          {/* Right column — 45% */}
-          <div style={{ width: 'calc(45% - 12px)', display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <section id="quota" style={SECTION_STYLE}>
-              <QuotaDonut data={quotaAlerts} loading={loading} />
-            </section>
-            <section id="models" style={SECTION_STYLE}>
-              <ModelBarChart data={modelsStats} loading={loading} />
-            </section>
-            <StatPill
-              icon={Shield}
-              iconBg="rgba(232,69,69,0.1)"
-              iconColor="#E84545"
-              value={loading ? '—' : revokedUsage.length}
-              label="Compliance Issues"
-              alertColor={revokedUsage.length > 0 ? '#E84545' : '#4CAF82'}
-            />
-            <StatPill
-              icon={AlertTriangle}
-              iconBg="rgba(245,166,35,0.1)"
-              iconColor="#F5A623"
-              value={loading ? '—' : missingResponses.length}
-              label="Missing Responses"
-              alertColor={missingResponses.length > 0 ? '#F5A623' : '#4CAF82'}
-            />
-            <StatPill
-              icon={Activity}
-              iconBg="rgba(76,175,130,0.1)"
-              iconColor="#4CAF82"
-              value={loading ? '—' : quotaAlerts.length}
-              label="Quota Alerts"
-              alertColor={quotaAlerts.length > 0 ? '#F5A623' : '#4CAF82'}
-            />
-          </div>
-        </div>
-
-        <section id="gateway" style={SECTION_STYLE} />
+            )}
+            {activePage === 'quota'  && <QuotaPage data={quotaAlerts} setActivePage={setActivePage} />}
+            {activePage === 'models' && <ModelsPage data={modelsStats} setActivePage={setActivePage} />}
+            {activePage === 'audit'  && <AuditPage revokedUsage={revokedUsage} missingResponses={missingResponses} setActivePage={setActivePage} />}
+            {activePage === 'gateway' && <GatewayPage setActivePage={setActivePage} />}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       <Footer />
-
-      <GatewayTester open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   )
 }

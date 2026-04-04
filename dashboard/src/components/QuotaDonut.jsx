@@ -36,7 +36,7 @@ function CustomTooltip({ active, payload, allData }) {
   )
 }
 
-export default function QuotaDonut({ data, loading }) {
+export default function QuotaDonut({ data, loading, innerRadius = 60, outerRadius = 90 }) {
   if (loading) {
     return (
       <div style={{ background: 'white', borderRadius: 20, padding: 24 }}>
@@ -52,7 +52,7 @@ export default function QuotaDonut({ data, loading }) {
 
   if (isAllClear) {
     return (
-      <div id="quota" style={{ background: 'white', borderRadius: 20, padding: 24 }}>
+      <div style={{ background: 'white', borderRadius: 20, padding: 24 }}>
         <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 16 }}>
           QUOTA HEALTH
         </div>
@@ -60,8 +60,8 @@ export default function QuotaDonut({ data, loading }) {
           <PieChart>
             <Pie
               data={[{ name: 'All Clear', value: 1 }]}
-              innerRadius={60}
-              outerRadius={90}
+              innerRadius={innerRadius}
+              outerRadius={outerRadius}
               dataKey="value"
               startAngle={90}
               endAngle={-270}
@@ -89,7 +89,7 @@ export default function QuotaDonut({ data, loading }) {
   const totalAlerts = data.length
 
   return (
-    <div id="quota" style={{ background: 'white', borderRadius: 20, padding: 24 }}>
+    <div style={{ background: 'white', borderRadius: 20, padding: 24 }}>
       <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 8 }}>
         QUOTA HEALTH
       </div>
@@ -99,8 +99,8 @@ export default function QuotaDonut({ data, loading }) {
           <PieChart>
             <Pie
               data={chartData}
-              innerRadius={60}
-              outerRadius={90}
+              innerRadius={innerRadius}
+              outerRadius={outerRadius}
               dataKey="value"
               startAngle={90}
               endAngle={-270}

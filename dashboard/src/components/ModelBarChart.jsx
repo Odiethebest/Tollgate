@@ -42,14 +42,14 @@ const CustomTooltip = ({ active, payload }) => {
   )
 }
 
-export default function ModelBarChart({ data, loading }) {
+export default function ModelBarChart({ data, loading, chartHeight = 220 }) {
   if (loading) {
     return (
       <div style={{ background: 'white', borderRadius: 20, padding: 24 }}>
         <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 16 }}>
           MODEL PERFORMANCE
         </div>
-        <div style={{ height: 220 }} className="skeleton" />
+        <div style={{ height: chartHeight }} className="skeleton" />
       </div>
     )
   }
@@ -62,11 +62,11 @@ export default function ModelBarChart({ data, loading }) {
   }))
 
   return (
-    <div id="reports" style={{ background: 'white', borderRadius: 20, padding: 24 }}>
+    <div style={{ background: 'white', borderRadius: 20, padding: 24 }}>
       <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 16 }}>
         MODEL PERFORMANCE
       </div>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={chartHeight}>
         <ComposedChart data={chartData} margin={{ top: 10, right: 40, left: 0, bottom: 30 }}>
           <CartesianGrid stroke="#F0F0EE" vertical={false} />
           <XAxis
