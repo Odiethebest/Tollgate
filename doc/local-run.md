@@ -114,7 +114,7 @@ Successful startup logs should include:
 
 ## 8. End-to-End API Smoke Test (`curl`)
 
-### 7.1 Create a tenant
+### 8.1 Create a tenant
 
 ```bash
 curl -sS -X POST http://localhost:8080/api/tenants \
@@ -124,7 +124,7 @@ curl -sS -X POST http://localhost:8080/api/tenants \
 
 Capture `tenantId` from the response.
 
-### 7.2 Create a project
+### 8.2 Create a project
 
 ```bash
 curl -sS -X POST http://localhost:8080/api/projects \
@@ -134,7 +134,7 @@ curl -sS -X POST http://localhost:8080/api/projects \
 
 Capture `projectId`.
 
-### 7.3 Issue API key
+### 8.3 Issue API key
 
 ```bash
 curl -sS -X POST http://localhost:8080/api/keys \
@@ -144,7 +144,7 @@ curl -sS -X POST http://localhost:8080/api/keys \
 
 Capture `rawKey` (returned once only).
 
-### 7.4 Configure pricing for current month
+### 8.4 Configure pricing for current month
 
 ```bash
 MONTH=$(date +%Y-%m)
@@ -153,7 +153,7 @@ curl -sS -X POST http://localhost:8080/api/pricing \
   -d "{\"modelId\":1,\"billingMonth\":\"$MONTH\",\"inputRate\":0.005,\"outputRate\":0.015}"
 ```
 
-### 7.5 Configure quota for current month
+### 8.5 Configure quota for current month
 
 ```bash
 MONTH=$(date +%Y-%m)
@@ -162,7 +162,7 @@ curl -sS -X POST http://localhost:8080/api/quotas \
   -d "{\"projectId\":<PROJECT_ID>,\"billingMonth\":\"$MONTH\",\"tokenLimit\":50000,\"costLimit\":200}"
 ```
 
-### 7.6 Submit a gateway request
+### 8.6 Submit a gateway request
 
 ```bash
 curl -sS -X POST http://localhost:8080/api/gateway/submit \
@@ -184,7 +184,7 @@ Expected response shape:
 
 `outputTokens` and `latencyMs` are randomized in mock mode.
 
-### 7.7 Validate reporting and audit APIs
+### 8.7 Validate reporting and audit APIs
 
 ```bash
 curl -sS http://localhost:8080/api/reports/models/stats
@@ -223,6 +223,8 @@ Note: the database resets on every container restart (`spring.sql.init.mode=alwa
 
 ## 10. Troubleshooting
 
+
+
 ### Error: `SocketTimeoutException: Connect timed out`
 
 Cause: application is trying to connect to unreachable database endpoint.
@@ -248,7 +250,7 @@ psql "postgresql://demo_user:demo_pass@localhost:5432/llm_gateway"
 
 Fix already applied in repository: native report queries use `CAST(...)` (not `::`), compatible with JPA parameter parsing.
 
-## 10. Stop and Clean Up
+## 11. Stop and Clean Up
 
 Stop application: `Ctrl + C`
 
