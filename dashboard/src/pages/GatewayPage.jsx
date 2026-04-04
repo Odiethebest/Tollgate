@@ -136,7 +136,7 @@ export default function GatewayPage({ setActivePage }) {
     >
       <BackButton onClick={() => setActivePage('overview')} />
 
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: 24, alignItems: 'stretch' }}>
 
         {/* Left — Form */}
         <div style={{ width: 'calc(45% - 12px)' }}>
@@ -266,10 +266,10 @@ export default function GatewayPage({ setActivePage }) {
         </div>
 
         {/* Right — Response */}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div style={{
             background: '#F9F9F7', borderRadius: 20, padding: 28,
-            minHeight: 280, display: 'flex', flexDirection: 'column',
+            flex: 1, display: 'flex', flexDirection: 'column',
           }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 20, display: 'block' }}>
               RESPONSE
