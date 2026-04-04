@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 
 function BackButton({ onClick }) {
@@ -37,30 +37,125 @@ function StatusBadge({ status }) {
   )
 }
 
-function TimelineEntry({ dotColor, borderColor, children }) {
+function GrayPill({ children, nowrap }) {
   return (
-    <div style={{ display: 'flex', gap: 14, paddingBottom: 20 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 16 }}>
-        <div style={{ width: 10, height: 10, borderRadius: '50%', background: dotColor, flexShrink: 0, marginTop: 3 }} />
-        <div style={{ flex: 1, width: 2, background: borderColor, opacity: 0.2, marginTop: 4 }} />
-      </div>
-      <div style={{ flex: 1 }}>
-        {children}
-      </div>
-    </div>
+    <span style={{
+      background: '#F4F4F0', color: '#9B9B9B',
+      borderRadius: 6, padding: '2px 8px', fontSize: '0.75rem',
+      whiteSpace: nowrap ? 'nowrap' : undefined,
+    }}>
+      {children}
+    </span>
   )
 }
 
-const daysSince = (dateStr) => Math.floor((Date.now() - new Date(dateStr)) / 86400000)
+const TH_STYLE = {
+  padding: '8px 10px',
+  textAlign: 'left',
+  fontSize: '0.72rem',
+  textTransform: 'uppercase',
+  color: '#9B9B9B',
+  fontWeight: 600,
+  letterSpacing: '0.05em',
+  whiteSpace: 'nowrap',
+  borderBottom: '1px solid #F0F0EE',
+}
+
+const TD_STYLE = { padding: '10px 10px', verticalAlign: 'middle', fontSize: '0.8rem' }
+
+const PAGE_SIZE = 15
+
+function Pagination({ page, totalPages, total, pageSize, setPage }) {
+  if (totalPages <= 1) return null
+
+  const start = (page - 1) * pageSize + 1
+  const end = Math.min(page * pageSize, total)
+
+  const getPages = () => {
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1)
+    const pages = []
+    if (page <= 3) {
+      pages.push(1, 2, 3, 4, '...', totalPages)
+    } else if (page >= totalPages - 2) {
+      pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages)
+    } else {
+      pages.push(1, '...', page - 1, page, page + 1, '...', totalPages)
+    }
+    return pages
+  }
+
+  const btnBase = {
+    background: 'none', border: 'none', cursor: 'pointer',
+    padding: '4px 10px', borderRadius: 8, fontSize: '0.8rem',
+    minWidth: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 4px 4px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button
+          onClick={() => setPage(p => p - 1)}
+          disabled={page === 1}
+          style={{ ...btnBase, color: page === 1 ? '#D0D0D0' : '#9B9B9B', cursor: page === 1 ? 'default' : 'pointer' }}
+        >
+          ←
+        </button>
+
+        {getPages().map((p, i) =>
+          p === '...'
+            ? <span key={`ellipsis-${i}`} style={{ color: '#9B9B9B', padding: '0 4px', fontSize: '0.8rem' }}>…</span>
+            : <button
+                key={p}
+                onClick={() => setPage(p)}
+                style={{
+                  ...btnBase,
+                  background: p === page ? '#1A1A2E' : 'none',
+                  color: p === page ? 'white' : '#9B9B9B',
+                  cursor: p === page ? 'default' : 'pointer',
+                }}
+              >
+                {p}
+              </button>
+        )}
+
+        <button
+          onClick={() => setPage(p => p + 1)}
+          disabled={page === totalPages}
+          style={{ ...btnBase, color: page === totalPages ? '#D0D0D0' : '#9B9B9B', cursor: page === totalPages ? 'default' : 'pointer' }}
+        >
+          →
+        </button>
+      </div>
+
+      <span style={{ fontSize: '0.75rem', color: '#9B9B9B' }}>
+        Showing {start}–{end} of {total}
+      </span>
+    </div>
+  )
+}
 
 export default function AuditPage({ revokedUsage, missingResponses, setActivePage }) {
   const rv = revokedUsage || []
   const mr = missingResponses || []
   const totalFlags = rv.length + mr.length
 
+  const [activeTab, setActiveTab] = useState('revoked')
+  const [page, setPage] = useState(1)
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab)
+    setPage(1)
+  }
+
+  const data = activeTab === 'revoked' ? rv : mr
+  const totalPages = Math.ceil(data.length / PAGE_SIZE)
+  const currentPageRows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
   const latest = rv.length > 0
     ? [...rv].sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt))[0]
     : null
+
+  const daysSince = (dateStr) => Math.floor((Date.now() - new Date(dateStr)) / 86400000)
 
   const insight = `${rv.length} compliance violation${rv.length !== 1 ? 's' : ''} detected. Most recent: ${latest ? daysSince(latest.requestedAt) + ' days ago' : 'N/A'}. ${mr.length} request${mr.length !== 1 ? 's have' : ' has'} no corresponding response record.`
 
@@ -84,12 +179,7 @@ export default function AuditPage({ revokedUsage, missingResponses, setActivePag
               { label: 'Missing Responses', value: mr.length, color: '#FFD080' },
             ].map((s, i) => (
               <div key={i}>
-                <div style={{
-                  color: s.color,
-                  fontSize: s.large ? '2.5rem' : '1.8rem',
-                  fontWeight: 600,
-                  lineHeight: 1,
-                }}>
+                <div style={{ color: s.color, fontSize: s.large ? '2.5rem' : '1.8rem', fontWeight: 600, lineHeight: 1 }}>
                   {s.value}
                 </div>
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', marginTop: 4 }}>
@@ -99,64 +189,99 @@ export default function AuditPage({ revokedUsage, missingResponses, setActivePag
             ))}
           </div>
 
-          {/* Two-column timelines */}
-          <div style={{ display: 'flex', background: 'white' }}>
+          {/* Tab + Table */}
+          <div style={{ background: 'white', padding: '0 24px 24px' }}>
 
-            {/* Left — Revoked Key Events */}
-            <div style={{ flex: 1, padding: 28, borderRight: '1px solid #F0F0EE' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#E84545', letterSpacing: '0.08em', marginBottom: 20 }}>
-                REVOKED KEY EVENTS
-              </div>
-              {rv.length === 0 && (
-                <div style={{ color: '#9B9B9B', fontSize: '0.875rem' }}>No violations found</div>
-              )}
-              {rv.map(item => (
-                <TimelineEntry key={`rv-${item.requestId}`} dotColor="#E84545" borderColor="#E84545">
-                  <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: 3 }}>
-                    Request #{item.requestId}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#9B9B9B', marginBottom: 6 }}>
-                    Key {item.keyId} · Project {item.projectId}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#9B9B9B' }}>
-                    Requested: {fmtDate(item.requestedAt)}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#9B9B9B', marginBottom: 8 }}>
-                    Key revoked: {fmtDate(item.revokedAt)}
-                  </div>
-                  <span style={{
-                    background: 'rgba(232,69,69,0.1)', color: '#E84545',
-                    borderRadius: 6, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 600,
-                  }}>
-                    COMPLIANCE VIOLATION
-                  </span>
-                </TimelineEntry>
+            {/* Tabs */}
+            <div style={{ display: 'flex', borderBottom: '1px solid #F0F0EE', marginBottom: 16 }}>
+              {[
+                { key: 'revoked', label: 'Revoked Key' },
+                { key: 'missing', label: 'Missing Response' },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => handleTabChange(tab.key)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '12px 16px',
+                    fontSize: '0.875rem',
+                    fontWeight: activeTab === tab.key ? 600 : 400,
+                    color: activeTab === tab.key ? '#1A1A2E' : '#9B9B9B',
+                    borderBottom: `2px solid ${activeTab === tab.key ? '#1A1A2E' : 'transparent'}`,
+                    marginBottom: -1,
+                    transition: 'color 200ms',
+                  }}
+                >
+                  {tab.label}
+                </button>
               ))}
             </div>
 
-            {/* Right — Missing Responses */}
-            <div style={{ flex: 1, padding: 28 }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#F5A623', letterSpacing: '0.08em', marginBottom: 20 }}>
-                MISSING RESPONSES
-              </div>
-              {mr.length === 0 && (
-                <div style={{ color: '#9B9B9B', fontSize: '0.875rem' }}>No missing responses found</div>
-              )}
-              {mr.map(item => (
-                <TimelineEntry key={`mr-${item.requestId}`} dotColor="#F5A623" borderColor="#F5A623">
-                  <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: 3 }}>
-                    Request #{item.requestId}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#9B9B9B', marginBottom: 6 }}>
-                    Key {item.keyId} · Model {item.modelId} · Project {item.projectId}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#9B9B9B', marginBottom: 8 }}>
-                    {fmtDate(item.requestedAt)}
-                  </div>
-                  <StatusBadge status={item.status} />
-                </TimelineEntry>
-              ))}
+            {/* Table */}
+            <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+                  <tr>
+                    {activeTab === 'revoked' ? (
+                      <>
+                        <th style={TH_STYLE}>Request ID</th>
+                        <th style={TH_STYLE}>Key ID</th>
+                        <th style={TH_STYLE}>Project ID</th>
+                        <th style={TH_STYLE}>Requested At</th>
+                        <th style={TH_STYLE}>Revoked At</th>
+                      </>
+                    ) : (
+                      <>
+                        <th style={TH_STYLE}>Request ID</th>
+                        <th style={TH_STYLE}>Key ID</th>
+                        <th style={TH_STYLE}>Model ID</th>
+                        <th style={TH_STYLE}>Project ID</th>
+                        <th style={TH_STYLE}>Requested At</th>
+                        <th style={TH_STYLE}>Status</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentPageRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={activeTab === 'revoked' ? 5 : 6} style={{ ...TD_STYLE, textAlign: 'center', color: '#9B9B9B', padding: '24px' }}>
+                        No records found
+                      </td>
+                    </tr>
+                  ) : activeTab === 'revoked' ? (
+                    currentPageRows.map(item => (
+                      <tr key={item.requestId} style={{ borderBottom: '1px solid #F0F0EE' }}>
+                        <td style={{ ...TD_STYLE, fontFamily: 'monospace' }}>#{item.requestId}</td>
+                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Key {item.keyId}</GrayPill></td>
+                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Proj {item.projectId}</GrayPill></td>
+                        <td style={TD_STYLE}>{fmtDate(item.requestedAt)}</td>
+                        <td style={{ ...TD_STYLE, color: '#E84545' }}>{fmtDate(item.revokedAt)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    currentPageRows.map(item => (
+                      <tr key={item.requestId} style={{ borderBottom: '1px solid #F0F0EE' }}>
+                        <td style={{ ...TD_STYLE, fontFamily: 'monospace' }}>#{item.requestId}</td>
+                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Key {item.keyId}</GrayPill></td>
+                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Model {item.modelId}</GrayPill></td>
+                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Proj {item.projectId}</GrayPill></td>
+                        <td style={TD_STYLE}>{fmtDate(item.requestedAt)}</td>
+                        <td style={TD_STYLE}><StatusBadge status={item.status} /></td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
+
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={data.length}
+              pageSize={PAGE_SIZE}
+              setPage={setPage}
+            />
           </div>
         </div>
       </motion.div>
