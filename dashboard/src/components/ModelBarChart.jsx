@@ -67,12 +67,15 @@ export default function ModelBarChart({ data, loading, chartHeight = 220 }) {
         MODEL PERFORMANCE
       </div>
       <ResponsiveContainer width="100%" height={340}>
-        <ComposedChart data={chartData} margin={{ top: 30, right: 30, left: 0, bottom: 40 }}>
+        <ComposedChart data={chartData} margin={{ top: 30, right: 30, left: 0, bottom: 40 }} barCategoryGap="35%" barGap={4}>
           <CartesianGrid stroke="#F0F0EE" vertical={false} />
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 11, fill: '#9B9B9B' }}
+            tick={{ fontSize: 10, fill: '#9B9B9B' }}
             interval={0}
+            angle={-12}
+            textAnchor="end"
+            dy={8}
           />
           <YAxis
             yAxisId="left"
