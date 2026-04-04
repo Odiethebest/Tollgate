@@ -7,19 +7,26 @@ import RequestTable from '../components/RequestTable.jsx'
 import StatPill from '../components/StatPill.jsx'
 import { Shield, AlertTriangle, Activity } from 'lucide-react'
 
-function ViewDetailsLabel({ visible }) {
+function ViewDetailsButton({ onClick }) {
+  const [hovered, setHovered] = useState(false)
   return (
-    <div style={{
-      position: 'absolute',
-      bottom: 16,
-      right: 20,
-      fontSize: '0.75rem',
-      color: '#9B9B9B',
-      pointerEvents: 'none',
-      opacity: visible ? 1 : 0,
-      transition: 'opacity 150ms',
-    }}>
-      ↗ View Details
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'absolute',
+        top: 20,
+        right: 20,
+        fontSize: '0.75rem',
+        color: hovered ? '#1A1A2E' : '#9B9B9B',
+        cursor: 'pointer',
+        userSelect: 'none',
+        transition: 'color 0.15s',
+        zIndex: 10,
+      }}
+    >
+      View Details →
     </div>
   )
 }
@@ -27,8 +34,6 @@ function ViewDetailsLabel({ visible }) {
 export default function Overview({
   modelsStats, revokedUsage, missingResponses, quotaAlerts, loading, setActivePage
 }) {
-  const [hovered, setHovered] = useState(null)
-
   return (
     <div style={{
       display: 'grid',
@@ -54,47 +59,23 @@ export default function Overview({
       </div>
 
       <div style={{ gridArea: 'quota' }}>
-        <motion.div
-          layoutId="quota-card"
-          style={{ position: 'relative', borderRadius: 20, cursor: 'pointer' }}
-          onClick={() => setActivePage('quota')}
-          whileHover={{ scale: 1.01 }}
-          transition={{ duration: 0.15 }}
-          onMouseEnter={() => setHovered('quota')}
-          onMouseLeave={() => setHovered(null)}
-        >
+        <motion.div layoutId="quota-card" style={{ position: 'relative' }}>
           <QuotaDonut data={quotaAlerts} loading={loading} />
-          <ViewDetailsLabel visible={hovered === 'quota'} />
+          <ViewDetailsButton onClick={() => setActivePage('quota')} />
         </motion.div>
       </div>
 
       <div style={{ gridArea: 'table' }}>
-        <motion.div
-          layoutId="audit-card"
-          style={{ position: 'relative', borderRadius: 20, cursor: 'pointer' }}
-          onClick={() => setActivePage('audit')}
-          whileHover={{ scale: 1.01 }}
-          transition={{ duration: 0.15 }}
-          onMouseEnter={() => setHovered('audit')}
-          onMouseLeave={() => setHovered(null)}
-        >
+        <motion.div layoutId="audit-card" style={{ position: 'relative' }}>
           <RequestTable />
-          <ViewDetailsLabel visible={hovered === 'audit'} />
+          <ViewDetailsButton onClick={() => setActivePage('audit')} />
         </motion.div>
       </div>
 
       <div style={{ gridArea: 'models' }}>
-        <motion.div
-          layoutId="models-card"
-          style={{ position: 'relative', borderRadius: 20, cursor: 'pointer' }}
-          onClick={() => setActivePage('models')}
-          whileHover={{ scale: 1.01 }}
-          transition={{ duration: 0.15 }}
-          onMouseEnter={() => setHovered('models')}
-          onMouseLeave={() => setHovered(null)}
-        >
+        <motion.div layoutId="models-card" style={{ position: 'relative' }}>
           <ModelBarChart data={modelsStats} loading={loading} chartHeight={200} />
-          <ViewDetailsLabel visible={hovered === 'models'} />
+          <ViewDetailsButton onClick={() => setActivePage('models')} />
         </motion.div>
       </div>
 
