@@ -17,18 +17,6 @@ export default function HeroCard({ modelsStats, revokedUsage, missingResponses, 
     return () => document.removeEventListener('mousedown', handler)
   }, [menuOpen])
 
-  const handleCopyStats = useCallback(() => {
-    const totalRequests = modelsStats.reduce((sum, m) => sum + m.totalRequests, 0)
-    const weightedSuccessRate = modelsStats.length > 0
-      ? (modelsStats.reduce((sum, m) => sum + m.successRate * m.totalRequests, 0) / totalRequests).toFixed(1)
-      : '0.0'
-    const nonSuccessRate = (100 - parseFloat(weightedSuccessRate)).toFixed(1)
-    const auditFlags = revokedUsage.length + missingResponses.length
-    const text = `Total Requests: ${totalRequests.toLocaleString()}\nSuccess Rate: ${weightedSuccessRate}%\nNon-Success: ${nonSuccessRate}%\nAudit Flags: ${auditFlags}`
-    navigator.clipboard.writeText(text).catch(() => {})
-    setMenuOpen(false)
-  }, [modelsStats, revokedUsage, missingResponses])
-
   // Computed values
   const totalRequests = modelsStats.reduce((sum, m) => sum + m.totalRequests, 0)
   const weightedSuccessRate = modelsStats.length > 0
@@ -37,12 +25,11 @@ export default function HeroCard({ modelsStats, revokedUsage, missingResponses, 
   const nonSuccessRate = (100 - parseFloat(weightedSuccessRate)).toFixed(1)
   const auditFlags = revokedUsage.length + missingResponses.length
 
-  const totalRequests = modelsStats.reduce((sum, m) => sum + m.totalRequests, 0)
-  const weightedSuccessRate = modelsStats.length > 0
-    ? (modelsStats.reduce((sum, m) => sum + m.successRate * m.totalRequests, 0) / totalRequests).toFixed(1)
-    : '0.0'
-  const nonSuccessRate = (100 - parseFloat(weightedSuccessRate)).toFixed(1)
-  const auditFlags = revokedUsage.length + missingResponses.length
+  const handleCopyStats = useCallback(() => {
+    const text = `Total Requests: ${totalRequests.toLocaleString()}\nSuccess Rate: ${weightedSuccessRate}%\nNon-Success: ${nonSuccessRate}%\nAudit Flags: ${auditFlags}`
+    navigator.clipboard.writeText(text).catch(() => {})
+    setMenuOpen(false)
+  }, [totalRequests, weightedSuccessRate, nonSuccessRate, auditFlags])
 
   if (loading) {
     return (
