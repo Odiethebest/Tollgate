@@ -37,9 +37,11 @@ function CustomTooltip({ active, payload, allData }) {
 }
 
 export default function QuotaDonut({ data, loading, innerRadius = 60, outerRadius = 90, donutHeight = 200 }) {
+  const cardStyle = { background: 'white', borderRadius: 20, padding: 24, height: '100%', boxSizing: 'border-box' }
+
   if (loading) {
     return (
-      <div style={{ background: 'white', borderRadius: 20, padding: 24 }}>
+      <div style={cardStyle}>
         <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 16 }}>
           QUOTA HEALTH
         </div>
@@ -52,7 +54,7 @@ export default function QuotaDonut({ data, loading, innerRadius = 60, outerRadiu
 
   if (isAllClear) {
     return (
-      <div style={{ background: 'white', borderRadius: 20, padding: 24 }}>
+      <div style={cardStyle}>
         <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 16 }}>
           QUOTA HEALTH
         </div>
@@ -89,7 +91,7 @@ export default function QuotaDonut({ data, loading, innerRadius = 60, outerRadiu
   const totalAlerts = data.length
 
   return (
-    <div style={{ background: 'white', borderRadius: 20, padding: 24 }}>
+    <div style={cardStyle}>
       <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 8 }}>
         QUOTA HEALTH
       </div>

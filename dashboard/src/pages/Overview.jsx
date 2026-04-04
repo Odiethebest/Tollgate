@@ -51,21 +51,22 @@ export default function Overview({
       alignItems: 'start',
     }}>
 
-      <div style={{ gridArea: 'hero' }}>
-        <motion.div layoutId="hero-card">
+      <div style={{ gridArea: 'hero', alignSelf: 'stretch', display: 'flex', flexDirection: 'column' }}>
+        <motion.div layoutId="hero-card" style={{ flex: 1 }}>
           <HeroCard
             modelsStats={modelsStats}
             revokedUsage={revokedUsage}
             missingResponses={missingResponses}
             loading={loading}
+            onRefresh={() => window.location.reload()}
           />
         </motion.div>
       </div>
 
-      <div style={{ gridArea: 'quota' }}>
+      <div style={{ gridArea: 'quota', alignSelf: 'stretch', display: 'flex', flexDirection: 'column' }}>
         <motion.div
           layoutId="quota-card"
-          style={{ position: 'relative' }}
+          style={{ position: 'relative', flex: 1 }}
           whileHover={{ scale: 1.01 }}
           transition={{ duration: 0.15 }}
           onMouseEnter={() => setHovered('quota')}
