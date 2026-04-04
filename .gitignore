@@ -2,6 +2,7 @@
 .idea/
 .claude/
 phase4/
+doc/history/
 target/
 out/
 *.iml
