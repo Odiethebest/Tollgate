@@ -94,6 +94,7 @@ export default function RequestTable() {
   const [auditFlagsData, setAuditFlagsData] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [keyReqFilters, setKeyReqFilters] = useState({ status: '', modelId: '' })
 
   const fetchKeyRequests = useCallback(async (id, from, to) => {
     try {
@@ -213,6 +214,29 @@ export default function RequestTable() {
                   outline: 'none',
                 }}
               />
+              <select
+                value={keyReqFilters.status}
+                onChange={e => setKeyReqFilters(f => ({ ...f, status: e.target.value }))}
+                style={{
+                  height: 32, border: '1px solid #F0F0EE', borderRadius: 8,
+                  fontSize: '0.8rem', padding: '0 8px', outline: 'none', background: 'white', color: '#1A1A2E',
+                }}
+              >
+                <option value="">All Status</option>
+                <option value="success">success</option>
+                <option value="failed">failed</option>
+                <option value="denied">denied</option>
+              </select>
+              <input
+                type="number"
+                placeholder="Model ID"
+                value={keyReqFilters.modelId}
+                onChange={e => setKeyReqFilters(f => ({ ...f, modelId: e.target.value }))}
+                style={{
+                  width: 90, height: 32, border: '1px solid #F0F0EE', borderRadius: 8,
+                  fontSize: '0.8rem', padding: '0 10px', outline: 'none', background: 'white', color: '#1A1A2E', boxSizing: 'border-box',
+                }}
+              />
               <button
                 onClick={handleSearch}
                 style={{
@@ -235,43 +259,50 @@ export default function RequestTable() {
                   <div key={i} className="skeleton" style={{ height: 40, marginBottom: 8 }} />
                 ))}
               </div>
-            ) : (
-              <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
-                    <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
-                      <th style={TH_STYLE}>Request ID</th>
-                      <th style={TH_STYLE}>Requested At</th>
-                      <th style={TH_STYLE}>Status</th>
-                      <th style={TH_STYLE}>Model ID</th>
-                      <th style={{ ...TH_STYLE, textAlign: 'center' }}>Project ID</th>
-                      <th style={{ ...TH_STYLE, textAlign: 'center' }}>Tokens</th>
-                      <th style={{ ...TH_STYLE, textAlign: 'right' }}>Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {keyRequestsData.map(row => (
-                      <tr key={row.requestId} style={{ borderBottom: '1px solid #F0F0EE' }}>
-                        <td style={{ ...TD_STYLE, fontFamily: 'monospace', fontSize: '0.8rem' }}>#{row.requestId}</td>
-                        <td style={TD_STYLE}>{fmtDate(row.requestedAt)}</td>
-                        <td style={TD_STYLE}><StatusBadge status={row.status} /></td>
-                        <td style={TD_STYLE}><GrayPill>Model {row.modelId}</GrayPill></td>
-                        <td style={{ ...TD_STYLE, textAlign: 'center' }}><GrayPill>Proj {row.projectId}</GrayPill></td>
-                        <td style={{ ...TD_STYLE, textAlign: 'center' }}>{row.inputTokens?.toLocaleString() ?? '—'}</td>
-                        <td style={{ ...TD_STYLE, textAlign: 'right', fontFamily: 'monospace' }}>
-                          ${(row.computedCost ?? 0).toFixed(4)}
-                        </td>
+            ) : (() => {
+              const filtered = keyRequestsData.filter(row => {
+                if (keyReqFilters.status && row.status !== keyReqFilters.status) return false
+                if (keyReqFilters.modelId && row.modelId !== Number(keyReqFilters.modelId)) return false
+                return true
+              })
+              return (
+                <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+                      <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
+                        <th style={TH_STYLE}>Request ID</th>
+                        <th style={TH_STYLE}>Requested At</th>
+                        <th style={TH_STYLE}>Status</th>
+                        <th style={TH_STYLE}>Model ID</th>
+                        <th style={{ ...TH_STYLE, textAlign: 'center' }}>Project ID</th>
+                        <th style={{ ...TH_STYLE, textAlign: 'center' }}>Tokens</th>
+                        <th style={{ ...TH_STYLE, textAlign: 'right' }}>Cost</th>
                       </tr>
-                    ))}
-                    {keyRequestsData.length === 0 && (
-                      <tr>
-                        <td colSpan={7} style={{ ...TD_STYLE, textAlign: 'center', color: '#9B9B9B' }}>No records found</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {filtered.map(row => (
+                        <tr key={row.requestId} style={{ borderBottom: '1px solid #F0F0EE' }}>
+                          <td style={{ ...TD_STYLE, fontFamily: 'monospace', fontSize: '0.8rem' }}>#{row.requestId}</td>
+                          <td style={TD_STYLE}>{fmtDate(row.requestedAt)}</td>
+                          <td style={TD_STYLE}><StatusBadge status={row.status} /></td>
+                          <td style={TD_STYLE}><GrayPill>Model {row.modelId}</GrayPill></td>
+                          <td style={{ ...TD_STYLE, textAlign: 'center' }}><GrayPill>Proj {row.projectId}</GrayPill></td>
+                          <td style={{ ...TD_STYLE, textAlign: 'center' }}>{row.inputTokens?.toLocaleString() ?? '—'}</td>
+                          <td style={{ ...TD_STYLE, textAlign: 'right', fontFamily: 'monospace' }}>
+                            ${(row.computedCost ?? 0).toFixed(4)}
+                          </td>
+                        </tr>
+                      ))}
+                      {filtered.length === 0 && (
+                        <tr>
+                          <td colSpan={7} style={{ ...TD_STYLE, textAlign: 'center', color: '#9B9B9B' }}>No records found</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
           </>
         )}
 

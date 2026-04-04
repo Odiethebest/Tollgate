@@ -37,12 +37,12 @@ function StatusBadge({ status }) {
   )
 }
 
-function GrayPill({ children, nowrap }) {
+function GrayPill({ children }) {
   return (
     <span style={{
       background: '#F4F4F0', color: '#9B9B9B',
       borderRadius: 6, padding: '2px 8px', fontSize: '0.75rem',
-      whiteSpace: nowrap ? 'nowrap' : undefined,
+      whiteSpace: 'nowrap',
     }}>
       {children}
     </span>
@@ -64,6 +64,21 @@ const TH_STYLE = {
 const TD_STYLE = { padding: '10px 10px', verticalAlign: 'middle', fontSize: '0.8rem' }
 
 const PAGE_SIZE = 15
+
+const FILTER_INPUT = {
+  height: 32,
+  border: '1px solid #F0F0EE',
+  borderRadius: 8,
+  fontSize: '0.8rem',
+  padding: '0 10px',
+  outline: 'none',
+  background: 'white',
+  color: '#1A1A2E',
+  boxSizing: 'border-box',
+}
+
+const EMPTY_REVOKED = { keyId: '', projectId: '', from: '', to: '' }
+const EMPTY_MISSING = { status: '', keyId: '', projectId: '', from: '', to: '' }
 
 function Pagination({ page, totalPages, total, pageSize, setPage }) {
   if (totalPages <= 1) return null
@@ -141,13 +156,35 @@ export default function AuditPage({ revokedUsage, missingResponses, setActivePag
 
   const [activeTab, setActiveTab] = useState('revoked')
   const [page, setPage] = useState(1)
+  const [revokedFilters, setRevokedFilters] = useState(EMPTY_REVOKED)
+  const [missingFilters, setMissingFilters] = useState(EMPTY_MISSING)
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)
     setPage(1)
   }
 
-  const data = activeTab === 'revoked' ? rv : mr
+  const setRF = (key, val) => { setRevokedFilters(f => ({ ...f, [key]: val })); setPage(1) }
+  const setMF = (key, val) => { setMissingFilters(f => ({ ...f, [key]: val })); setPage(1) }
+
+  const filteredRevoked = rv.filter(row => {
+    if (revokedFilters.keyId && row.keyId !== Number(revokedFilters.keyId)) return false
+    if (revokedFilters.projectId && row.projectId !== Number(revokedFilters.projectId)) return false
+    if (revokedFilters.from && new Date(row.requestedAt) < new Date(revokedFilters.from)) return false
+    if (revokedFilters.to && new Date(row.requestedAt) > new Date(revokedFilters.to)) return false
+    return true
+  })
+
+  const filteredMissing = mr.filter(row => {
+    if (missingFilters.status && row.status !== missingFilters.status) return false
+    if (missingFilters.keyId && row.keyId !== Number(missingFilters.keyId)) return false
+    if (missingFilters.projectId && row.projectId !== Number(missingFilters.projectId)) return false
+    if (missingFilters.from && new Date(row.requestedAt) < new Date(missingFilters.from)) return false
+    if (missingFilters.to && new Date(row.requestedAt) > new Date(missingFilters.to)) return false
+    return true
+  })
+
+  const data = activeTab === 'revoked' ? filteredRevoked : filteredMissing
   const totalPages = Math.ceil(data.length / PAGE_SIZE)
   const currentPageRows = data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
@@ -217,6 +254,95 @@ export default function AuditPage({ revokedUsage, missingResponses, setActivePag
               ))}
             </div>
 
+            {/* Filter bar */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+              {activeTab === 'revoked' ? (
+                <>
+                  <input
+                    type="number"
+                    placeholder="Key ID"
+                    value={revokedFilters.keyId}
+                    onChange={e => setRF('keyId', e.target.value)}
+                    style={{ ...FILTER_INPUT, width: 90 }}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Proj ID"
+                    value={revokedFilters.projectId}
+                    onChange={e => setRF('projectId', e.target.value)}
+                    style={{ ...FILTER_INPUT, width: 90 }}
+                  />
+                  <input
+                    type="date"
+                    value={revokedFilters.from}
+                    onChange={e => setRF('from', e.target.value)}
+                    style={{ ...FILTER_INPUT, width: 150 }}
+                  />
+                  <input
+                    type="date"
+                    value={revokedFilters.to}
+                    onChange={e => setRF('to', e.target.value)}
+                    style={{ ...FILTER_INPUT, width: 150 }}
+                  />
+                  <button
+                    onClick={() => { setRevokedFilters(EMPTY_REVOKED); setPage(1) }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: '#9B9B9B', padding: '0 4px' }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#1A1A2E'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#9B9B9B'}
+                  >
+                    Clear All
+                  </button>
+                </>
+              ) : (
+                <>
+                  <select
+                    value={missingFilters.status}
+                    onChange={e => setMF('status', e.target.value)}
+                    style={{ ...FILTER_INPUT, width: 120 }}
+                  >
+                    <option value="">All Status</option>
+                    <option value="success">success</option>
+                    <option value="failed">failed</option>
+                    <option value="denied">denied</option>
+                  </select>
+                  <input
+                    type="number"
+                    placeholder="Key ID"
+                    value={missingFilters.keyId}
+                    onChange={e => setMF('keyId', e.target.value)}
+                    style={{ ...FILTER_INPUT, width: 90 }}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Proj ID"
+                    value={missingFilters.projectId}
+                    onChange={e => setMF('projectId', e.target.value)}
+                    style={{ ...FILTER_INPUT, width: 90 }}
+                  />
+                  <input
+                    type="date"
+                    value={missingFilters.from}
+                    onChange={e => setMF('from', e.target.value)}
+                    style={{ ...FILTER_INPUT, width: 150 }}
+                  />
+                  <input
+                    type="date"
+                    value={missingFilters.to}
+                    onChange={e => setMF('to', e.target.value)}
+                    style={{ ...FILTER_INPUT, width: 150 }}
+                  />
+                  <button
+                    onClick={() => { setMissingFilters(EMPTY_MISSING); setPage(1) }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: '#9B9B9B', padding: '0 4px' }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#1A1A2E'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#9B9B9B'}
+                  >
+                    Clear All
+                  </button>
+                </>
+              )}
+            </div>
+
             {/* Table */}
             <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -253,8 +379,8 @@ export default function AuditPage({ revokedUsage, missingResponses, setActivePag
                     currentPageRows.map(item => (
                       <tr key={item.requestId} style={{ borderBottom: '1px solid #F0F0EE' }}>
                         <td style={{ ...TD_STYLE, fontFamily: 'monospace' }}>#{item.requestId}</td>
-                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Key {item.keyId}</GrayPill></td>
-                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Proj {item.projectId}</GrayPill></td>
+                        <td style={TD_STYLE}><GrayPill>Key {item.keyId}</GrayPill></td>
+                        <td style={TD_STYLE}><GrayPill>Proj {item.projectId}</GrayPill></td>
                         <td style={TD_STYLE}>{fmtDate(item.requestedAt)}</td>
                         <td style={{ ...TD_STYLE, color: '#E84545' }}>{fmtDate(item.revokedAt)}</td>
                       </tr>
@@ -263,9 +389,9 @@ export default function AuditPage({ revokedUsage, missingResponses, setActivePag
                     currentPageRows.map(item => (
                       <tr key={item.requestId} style={{ borderBottom: '1px solid #F0F0EE' }}>
                         <td style={{ ...TD_STYLE, fontFamily: 'monospace' }}>#{item.requestId}</td>
-                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Key {item.keyId}</GrayPill></td>
-                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Model {item.modelId}</GrayPill></td>
-                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Proj {item.projectId}</GrayPill></td>
+                        <td style={TD_STYLE}><GrayPill>Key {item.keyId}</GrayPill></td>
+                        <td style={TD_STYLE}><GrayPill>Model {item.modelId}</GrayPill></td>
+                        <td style={TD_STYLE}><GrayPill>Proj {item.projectId}</GrayPill></td>
                         <td style={TD_STYLE}>{fmtDate(item.requestedAt)}</td>
                         <td style={TD_STYLE}><StatusBadge status={item.status} /></td>
                       </tr>
