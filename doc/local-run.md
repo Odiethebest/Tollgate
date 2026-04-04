@@ -192,7 +192,36 @@ curl -sS http://localhost:8080/api/reports/quota-alerts
 curl -sS http://localhost:8080/api/audit/missing-responses
 ```
 
-## 9. Troubleshooting
+## 9. Get a Raw API Key for Dashboard Testing
+
+The seed data (`data.sql`) pre-populates tenants, projects, and quotas, but the stored key hashes use MD5 and are not usable with the gateway (which expects SHA-256). You must issue a new key via the Admin API to get a valid raw key.
+
+The fastest path uses project 1 (TechCorp-Dev), which already has quota configured for the current month.
+
+Issue a key:
+
+```bash
+curl -s -X POST http://localhost:8080/api/keys \
+  -H "Content-Type: application/json" \
+  -d '{"projectId": 1, "label": "dashboard-test"}' | jq '{keyId: .keyId, rawKey: .rawKey}'
+```
+
+The `rawKey` value is returned once only. Copy it immediately.
+
+Then fill in the Gateway page:
+
+| Field | Value |
+|---|---|
+| X-API-Key | the `rawKey` from above |
+| Model ID | `1` (gpt-4o), `2` (claude-3-5-sonnet), or `3` (mistral-large) |
+| Input Tokens | any positive integer, e.g. `300` |
+| Prompt | any text |
+
+Note: each successful request deducts from the project's monthly token quota. Project 1 starts with 12,000 token limit and 7,600 used, leaving ~4,400 tokens before `QUOTA_EXCEEDED` is returned.
+
+Note: the database resets on every container restart (`spring.sql.init.mode=always`). Issue a new key after each restart.
+
+## 10. Troubleshooting
 
 ### Error: `SocketTimeoutException: Connect timed out`
 
