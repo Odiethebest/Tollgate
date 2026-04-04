@@ -184,7 +184,7 @@ Content-Type: application/json
 ### Local Setup
 
 ```bash
-git clone https://github.com/your-org/Tollgate.git
+git clone https://github.com/Odiethebest/Tollgate.git
 cd Tollgate
 ```
 
@@ -194,15 +194,21 @@ Create a local database:
 CREATE DATABASE llm_gateway;
 ```
 
-Configure the connection in `src/main/resources/application.properties`:
+Create local environment file from template and update DB credentials:
 
-```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/llm_gateway
-spring.datasource.username=your_user
-spring.datasource.password=your_password
+```bash
+cp .env.example .env
 ```
 
-Run:
+Load environment variables:
+
+```bash
+set -a
+source .env
+set +a
+```
+
+Run the service:
 
 ```bash
 mvn spring-boot:run
@@ -219,11 +225,14 @@ curl -X POST http://localhost:8080/api/tenants \
   -d '{"name":"TechCorp","contactEmail":"admin@techcorp.com"}'
 
 # Submit a gateway request (replace key with one issued via /api/keys)
+# Note: pricing/quota for current month must exist before submit.
 curl -X POST http://localhost:8080/api/gateway/submit \
   -H "X-API-Key: <your-raw-key>" \
   -H "Content-Type: application/json" \
   -d '{"modelId":1,"inputTokens":200,"prompt":"Hello"}'
 ```
+
+For a full end-to-end local demo sequence, see [`doc/local-run.md`](doc/local-run.md).
 
 ---
 
@@ -241,8 +250,8 @@ Database credentials are injected via App Engine environment variables defined i
 
 ```yaml
 env_variables:
-  SPRING_DATASOURCE_URL: "jdbc:postgresql://<VM_IP>:5432/llm_gateway"
-  SPRING_DATASOURCE_USERNAME: "gateway_user"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://<VM_IP>:5432/<DB_NAME>"
+  SPRING_DATASOURCE_USERNAME: "<DB_USER>"
   SPRING_DATASOURCE_PASSWORD: "..."
 ```
 
@@ -281,7 +290,7 @@ EXCEPT
 SELECT request_id FROM response;
 ```
 
-All 20 queries are listed in [`docs/queries.md`](docs/queries.md).
+More runnable examples and local validation steps are documented in [`doc/local-run.md`](doc/local-run.md).
 
 ---
 
