@@ -236,22 +236,22 @@ export default function RequestTable() {
                 ))}
               </div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
+                  <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
                     <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
                       <th style={TH_STYLE}>Request ID</th>
                       <th style={TH_STYLE}>Requested At</th>
                       <th style={TH_STYLE}>Status</th>
                       <th style={TH_STYLE}>Model ID</th>
                       <th style={TH_STYLE}>Project ID</th>
-                      <th style={{ ...TH_STYLE, textAlign: 'right' }}>Input Tokens</th>
+                      <th style={{ ...TH_STYLE, textAlign: 'right' }}>Tokens</th>
                       <th style={{ ...TH_STYLE, textAlign: 'right' }}>Cost</th>
                     </tr>
                   </thead>
-                  <tbody style={{ display: 'block', overflowY: 'auto', maxHeight: '240px' }}>
+                  <tbody>
                     {keyRequestsData.map(row => (
-                      <tr key={row.requestId} style={{ display: 'table', width: '100%', tableLayout: 'fixed', borderBottom: '1px solid #F0F0EE' }}>
+                      <tr key={row.requestId} style={{ borderBottom: '1px solid #F0F0EE' }}>
                         <td style={{ ...TD_STYLE, fontFamily: 'monospace', fontSize: '0.8rem' }}>#{row.requestId}</td>
                         <td style={TD_STYLE}>{fmtDate(row.requestedAt)}</td>
                         <td style={TD_STYLE}><StatusBadge status={row.status} /></td>
@@ -264,7 +264,7 @@ export default function RequestTable() {
                       </tr>
                     ))}
                     {keyRequestsData.length === 0 && (
-                      <tr style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
+                      <tr>
                         <td colSpan={7} style={{ ...TD_STYLE, textAlign: 'center', color: '#9B9B9B' }}>No records found</td>
                       </tr>
                     )}
@@ -284,9 +284,9 @@ export default function RequestTable() {
                 ))}
               </div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
+                  <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
                     <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
                       <th style={TH_STYLE}>Type</th>
                       <th style={TH_STYLE}>Request ID</th>
@@ -296,9 +296,9 @@ export default function RequestTable() {
                       <th style={TH_STYLE}>Detail</th>
                     </tr>
                   </thead>
-                  <tbody style={{ display: 'block', overflowY: 'auto', maxHeight: '240px' }}>
+                  <tbody>
                     {auditFlagsData.map((row, idx) => (
-                      <tr key={`${row.type}-${row.requestId}-${idx}`} style={{ display: 'table', width: '100%', tableLayout: 'fixed', borderBottom: '1px solid #F0F0EE' }}>
+                      <tr key={`${row.type}-${row.requestId}-${idx}`} style={{ borderBottom: '1px solid #F0F0EE' }}>
                         <td style={TD_STYLE}><TypeBadge type={row.type} /></td>
                         <td style={{ ...TD_STYLE, fontFamily: 'monospace', fontSize: '0.8rem' }}>#{row.requestId}</td>
                         <td style={TD_STYLE}><GrayPill>Key {row.keyId}</GrayPill></td>
@@ -313,7 +313,7 @@ export default function RequestTable() {
                       </tr>
                     ))}
                     {auditFlagsData.length === 0 && (
-                      <tr style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
+                      <tr>
                         <td colSpan={6} style={{ ...TD_STYLE, textAlign: 'center', color: '#9B9B9B' }}>No audit flags found</td>
                       </tr>
                     )}
