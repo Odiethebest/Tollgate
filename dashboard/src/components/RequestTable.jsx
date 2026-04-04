@@ -286,6 +286,14 @@ export default function RequestTable() {
             ) : (
               <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <colgroup>
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '20%' }} />
+                    <col style={{ width: '30%' }} />
+                  </colgroup>
                   <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
                     <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
                       <th style={TH_STYLE}>Type</th>
@@ -301,8 +309,8 @@ export default function RequestTable() {
                       <tr key={`${row.type}-${row.requestId}-${idx}`} style={{ borderBottom: '1px solid #F0F0EE' }}>
                         <td style={TD_STYLE}><TypeBadge type={row.type} /></td>
                         <td style={{ ...TD_STYLE, fontFamily: 'monospace', fontSize: '0.8rem' }}>#{row.requestId}</td>
-                        <td style={TD_STYLE}><GrayPill>Key {row.keyId}</GrayPill></td>
-                        <td style={TD_STYLE}><GrayPill>Proj {row.projectId}</GrayPill></td>
+                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Key {row.keyId}</GrayPill></td>
+                        <td style={{ ...TD_STYLE, whiteSpace: 'nowrap' }}><GrayPill>Proj {row.projectId}</GrayPill></td>
                         <td style={TD_STYLE}>{fmtDate(row.requestedAt)}</td>
                         <td style={TD_STYLE}>
                           {row.type === 'REVOKED_KEY'
