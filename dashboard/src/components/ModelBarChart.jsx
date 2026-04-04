@@ -66,8 +66,8 @@ export default function ModelBarChart({ data, loading, chartHeight = 220 }) {
       <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 16 }}>
         MODEL PERFORMANCE
       </div>
-      <ResponsiveContainer width="100%" height={260}>
-        <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 40 }}>
+      <ResponsiveContainer width="100%" height={340}>
+        <ComposedChart data={chartData} margin={{ top: 30, right: 30, left: 0, bottom: 40 }}>
           <CartesianGrid stroke="#F0F0EE" vertical={false} />
           <XAxis
             dataKey="label"
