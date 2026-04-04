@@ -21,7 +21,7 @@ public interface GatewayRequestRepository extends JpaRepository<GatewayRequest, 
 
     @Query(value = """
             SELECT COALESCE(SUM(r.computed_cost), 0) AS totalCost,
-                   COALESCE(SUM(r.input_tokens + COALESCE(rs.output_tokens, 0)), 0)::BIGINT AS totalTokens
+                   CAST(COALESCE(SUM(r.input_tokens + COALESCE(rs.output_tokens, 0)), 0) AS BIGINT) AS totalTokens
             FROM request r
             LEFT JOIN response rs ON rs.request_id = r.request_id
             WHERE r.project_id = :projectId
@@ -51,13 +51,27 @@ public interface GatewayRequestRepository extends JpaRepository<GatewayRequest, 
             SELECT m.model_id AS modelId,
                    m.provider AS provider,
                    m.model_name AS modelName,
-                   COALESCE(ROUND(
-                     (100.0 * SUM(CASE WHEN r.status = 'success' THEN 1 ELSE 0 END)
-                       / NULLIF(COUNT(r.request_id), 0))::numeric, 2
-                   ), 0) AS successRate,
-                   COALESCE(ROUND(AVG(
-                     CASE WHEN r.status = 'success' THEN rs.latency_ms END
-                   )::numeric, 2), 0) AS avgLatencyMs,
+                   COALESCE(
+                     ROUND(
+                       CAST(
+                         (100.0 * SUM(CASE WHEN r.status = 'success' THEN 1 ELSE 0 END)
+                           / NULLIF(COUNT(r.request_id), 0))
+                         AS numeric
+                       ),
+                       2
+                     ),
+                     0
+                   ) AS successRate,
+                   COALESCE(
+                     ROUND(
+                       CAST(
+                         AVG(CASE WHEN r.status = 'success' THEN rs.latency_ms END)
+                         AS numeric
+                       ),
+                       2
+                     ),
+                     0
+                   ) AS avgLatencyMs,
                    COUNT(r.request_id) AS totalRequests
             FROM llm_model m
             LEFT JOIN request r ON r.model_id = m.model_id
@@ -118,7 +132,7 @@ public interface GatewayRequestRepository extends JpaRepository<GatewayRequest, 
 
     @Query(value = """
             SELECT COALESCE(SUM(r.computed_cost), 0) AS totalCost,
-                   COALESCE(SUM(r.input_tokens + COALESCE(rs.output_tokens, 0)), 0)::BIGINT AS totalTokens
+                   CAST(COALESCE(SUM(r.input_tokens + COALESCE(rs.output_tokens, 0)), 0) AS BIGINT) AS totalTokens
             FROM request r
             LEFT JOIN response rs ON rs.request_id = r.request_id
             WHERE r.project_id = :projectId

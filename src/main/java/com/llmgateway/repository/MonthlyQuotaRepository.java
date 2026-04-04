@@ -31,7 +31,7 @@ public interface MonthlyQuotaRepository extends JpaRepository<MonthlyQuota, Long
                    q.billing_month AS billingMonth,
                    q.tokens_used AS tokensUsed,
                    q.token_limit AS tokenLimit,
-                   ROUND((q.tokens_used * 100.0 / NULLIF(q.token_limit, 0))::numeric, 2) AS usagePct
+                   ROUND(CAST((q.tokens_used * 100.0 / NULLIF(q.token_limit, 0)) AS numeric), 2) AS usagePct
             FROM monthly_quota q
             JOIN project p ON p.project_id = q.project_id
             WHERE q.billing_month = :billingMonth
