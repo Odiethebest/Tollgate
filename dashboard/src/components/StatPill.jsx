@@ -5,7 +5,7 @@ export default function StatPill({ icon: Icon, iconBg, iconColor, value, label, 
     <div style={{
       background: 'white',
       borderRadius: 20,
-      padding: 20,
+      padding: '16px 20px',
       boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
       display: 'flex',
       alignItems: 'center',

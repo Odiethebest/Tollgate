@@ -65,13 +65,24 @@ export default function QuotaPage({ data, setActivePage }) {
       <BackButton onClick={() => setActivePage('overview')} />
 
       <motion.div layoutId="quota-card" style={{ borderRadius: 20 }}>
-        <div style={{ background: 'white', borderRadius: 20, padding: 32 }}>
-          <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
+        <div style={{ background: 'white', borderRadius: 20, padding: 40 }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '40fr 60fr',
+            gap: 48,
+            alignItems: 'center',
+          }}>
 
-            {/* Left — donut */}
-            <div style={{ width: '40%', flexShrink: 0 }}>
-              <QuotaDonut data={safeData} loading={false} innerRadius={80} outerRadius={120} />
-              <div style={{ textAlign: 'center', marginTop: 12, fontSize: '0.875rem', color: '#9B9B9B' }}>
+            {/* Left — donut + summary line */}
+            <div>
+              <QuotaDonut
+                data={safeData}
+                loading={false}
+                innerRadius={90}
+                outerRadius={140}
+                donutHeight={320}
+              />
+              <div style={{ textAlign: 'center', marginTop: 12, fontSize: '0.85rem', color: '#9B9B9B' }}>
                 <span style={{ color: '#F5A623', fontWeight: 600 }}>{warningCount}</span>
                 {' projects in warning · '}
                 <span style={{ color: '#E84545', fontWeight: 600 }}>{criticalCount}</span>
@@ -79,8 +90,8 @@ export default function QuotaPage({ data, setActivePage }) {
               </div>
             </div>
 
-            {/* Right — table */}
-            <div style={{ flex: 1, overflowX: 'auto' }}>
+            {/* Right — projects table */}
+            <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #F0F0EE' }}>

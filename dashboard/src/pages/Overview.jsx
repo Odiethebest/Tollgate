@@ -30,10 +30,10 @@ export default function Overview({
   const [hovered, setHovered] = useState(null)
 
   return (
-    <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '55fr 45fr', gap: 24, alignItems: 'start' }}>
 
-      {/* Left column — 55% */}
-      <div style={{ width: 'calc(55% - 12px)', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Left column */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         <motion.div layoutId="hero-card">
           <HeroCard
             modelsStats={modelsStats}
@@ -57,8 +57,8 @@ export default function Overview({
         </motion.div>
       </div>
 
-      {/* Right column — 45% */}
-      <div style={{ width: 'calc(45% - 12px)', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Right column */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         <motion.div
           layoutId="quota-card"
           style={{ position: 'relative', borderRadius: 20, cursor: 'pointer' }}
@@ -81,7 +81,7 @@ export default function Overview({
           onMouseEnter={() => setHovered('models')}
           onMouseLeave={() => setHovered(null)}
         >
-          <ModelBarChart data={modelsStats} loading={loading} />
+          <ModelBarChart data={modelsStats} loading={loading} chartHeight={200} />
           <ViewDetailsLabel visible={hovered === 'models'} />
         </motion.div>
 

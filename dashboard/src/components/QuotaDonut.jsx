@@ -36,7 +36,7 @@ function CustomTooltip({ active, payload, allData }) {
   )
 }
 
-export default function QuotaDonut({ data, loading, innerRadius = 60, outerRadius = 90 }) {
+export default function QuotaDonut({ data, loading, innerRadius = 60, outerRadius = 90, donutHeight = 200 }) {
   if (loading) {
     return (
       <div style={{ background: 'white', borderRadius: 20, padding: 24 }}>
@@ -56,7 +56,7 @@ export default function QuotaDonut({ data, loading, innerRadius = 60, outerRadiu
         <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9B9B9B', letterSpacing: '0.08em', marginBottom: 16 }}>
           QUOTA HEALTH
         </div>
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" height={donutHeight}>
           <PieChart>
             <Pie
               data={[{ name: 'All Clear', value: 1 }]}
@@ -95,7 +95,7 @@ export default function QuotaDonut({ data, loading, innerRadius = 60, outerRadiu
       </div>
 
       <div style={{ position: 'relative' }}>
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" height={donutHeight}>
           <PieChart>
             <Pie
               data={chartData}
