@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["jdk17", "nodejs_20", "maven"]
+
+[phases.build]
+cmds = [
+  "cd dashboard && npm install && npm run build",
+  "mvn clean package -DskipTests"
+]
+
+[start]
+cmd = "java -jar target/llm-api-gateway-0.0.1-SNAPSHOT.jar"
