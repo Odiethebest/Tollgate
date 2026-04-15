@@ -37,6 +37,7 @@ public class GatewayService {
     private static final String STATUS_FAILED = "failed";
     private static final String REASON_KEY_REVOKED = "KEY_REVOKED";
     private static final String REASON_QUOTA_EXCEEDED = "QUOTA_EXCEEDED";
+    private static final String ACTION_REQUEST_ACCEPTED = "REQUEST_ACCEPTED";
     private static final String ACTOR_GATEWAY = "gateway-service";
 
     private final ApiKeyRepository apiKeyRepository;
@@ -179,6 +180,12 @@ public class GatewayService {
         gatewayResponse.setErrorType(null);
         gatewayResponse.setRawResponse("Mock LLM response generated");
         gatewayResponseRepository.save(gatewayResponse);
+        createAuditLog(
+                successRequest,
+                apiKey,
+                ACTION_REQUEST_ACCEPTED,
+                formatAcceptedRequestDetails(successRequest, gatewayResponse)
+        );
 
         GatewaySubmitResponse response = new GatewaySubmitResponse(
                 successRequest.getRequestId(),
@@ -289,6 +296,16 @@ public class GatewayService {
         auditLog.setPerformedBy(ACTOR_GATEWAY);
         auditLog.setDetails(details);
         auditLogRepository.save(auditLog);
+    }
+
+    private String formatAcceptedRequestDetails(GatewayRequest request, GatewayResponse response) {
+        return String.format(
+                "inputTokens=%d outputTokens=%d cost=%s latencyMs=%d",
+                request.getInputTokens(),
+                response.getOutputTokens(),
+                request.getComputedCost().toPlainString(),
+                response.getLatencyMs()
+        );
     }
 
     private BigDecimal computeCost(
