@@ -100,21 +100,33 @@ public class AdminService {
     @Transactional
     public ApiKeyResponse issueApiKey(IssueApiKeyRequest request) {
         ValidationUtils.requirePositiveLong(request.projectId(), "projectId");
+        return issueApiKey(request.projectId(), request.label(), UUID.randomUUID().toString());
+    }
 
-        Project project = projectRepository.findById(request.projectId())
+    @Transactional
+    public ApiKeyResponse issueApiKey(Long projectId, String label, String rawKey) {
+        ValidationUtils.requirePositiveLong(projectId, "projectId");
+        String normalizedRawKey = ValidationUtils.requireNonBlank(rawKey, "rawKey");
+        String normalizedLabel = normalizeOptional(label);
+
+        Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
+        String keyHash = HashUtils.sha256Hex(normalizedRawKey);
 
-        String rawKey = UUID.randomUUID().toString();
-        String keyHash = HashUtils.sha256Hex(rawKey);
+        ApiKey apiKey = apiKeyRepository.findByKeyHash(keyHash)
+                .map(existing -> reactivateExistingKey(existing, project, normalizedLabel))
+                .orElseGet(ApiKey::new);
 
-        ApiKey apiKey = new ApiKey();
-        apiKey.setProject(project);
-        apiKey.setKeyHash(keyHash);
-        apiKey.setStatus("active");
-        apiKey.setLabel(request.label() == null || request.label().isBlank() ? null : request.label().trim());
+        if (apiKey.getKeyId() == null) {
+            apiKey.setProject(project);
+            apiKey.setKeyHash(keyHash);
+            apiKey.setStatus("active");
+            apiKey.setRevokedAt(null);
+            apiKey.setLabel(normalizedLabel);
+        }
 
         ApiKey saved = apiKeyRepository.save(apiKey);
-        return toApiKeyResponse(saved, rawKey);
+        return toApiKeyResponse(saved, normalizedRawKey);
     }
 
     @Transactional
@@ -257,5 +269,24 @@ public class AdminService {
                 quota.getTokensUsed(),
                 quota.getCostLimit()
         );
+    }
+
+    private ApiKey reactivateExistingKey(ApiKey existing, Project project, String label) {
+        if (!existing.getProject().getProjectId().equals(project.getProjectId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "API key already exists for another project");
+        }
+
+        existing.setProject(project);
+        existing.setStatus("active");
+        existing.setRevokedAt(null);
+        existing.setLabel(label);
+        return existing;
+    }
+
+    private String normalizeOptional(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }
