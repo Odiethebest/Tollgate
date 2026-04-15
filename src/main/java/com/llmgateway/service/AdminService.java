@@ -25,7 +25,9 @@ import com.llmgateway.repository.MonthlyQuotaRepository;
 import com.llmgateway.repository.ProjectRepository;
 import com.llmgateway.repository.TenantRepository;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -205,6 +207,64 @@ public class AdminService {
 
         MonthlyQuota saved = monthlyQuotaRepository.save(quota);
         return toQuotaResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<TenantResponse> listTenants() {
+        return tenantRepository.findAll(Sort.by(Sort.Direction.ASC, "tenantId")).stream()
+                .map(this::toTenantResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectResponse> listProjects(Long tenantId) {
+        ValidationUtils.requirePositiveLong(tenantId, "tenantId");
+        if (!tenantRepository.existsById(tenantId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant not found");
+        }
+
+        return projectRepository.findByTenantTenantIdOrderByProjectIdAsc(tenantId).stream()
+                .map(this::toProjectResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ApiKeyResponse> listApiKeys(Long projectId) {
+        ValidationUtils.requirePositiveLong(projectId, "projectId");
+        if (!projectRepository.existsById(projectId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found");
+        }
+
+        return apiKeyRepository.findByProjectProjectIdOrderByKeyIdAsc(projectId).stream()
+                .map(apiKey -> toApiKeyResponse(apiKey, null))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ModelResponse> listModels() {
+        return llmModelRepository.findAll(Sort.by(Sort.Direction.ASC, "modelId")).stream()
+                .map(this::toModelResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<QuotaResponse> listQuotas(Long projectId, String billingMonthInput) {
+        ValidationUtils.requirePositiveLong(projectId, "projectId");
+        if (!projectRepository.existsById(projectId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found");
+        }
+
+        if (billingMonthInput != null && !billingMonthInput.isBlank()) {
+            String billingMonth = ValidationUtils.validateBillingMonth(billingMonthInput);
+            return monthlyQuotaRepository.findByProjectProjectIdAndBillingMonth(projectId, billingMonth)
+                    .map(this::toQuotaResponse)
+                    .stream()
+                    .toList();
+        }
+
+        return monthlyQuotaRepository.findByProjectProjectIdOrderByBillingMonthDesc(projectId).stream()
+                .map(this::toQuotaResponse)
+                .toList();
     }
 
     private TenantResponse toTenantResponse(Tenant tenant) {

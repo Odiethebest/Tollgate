@@ -15,6 +15,8 @@ public interface MonthlyQuotaRepository extends JpaRepository<MonthlyQuota, Long
 
     Optional<MonthlyQuota> findByProjectProjectIdAndBillingMonth(Long projectId, String billingMonth);
 
+    List<MonthlyQuota> findByProjectProjectIdOrderByBillingMonthDesc(Long projectId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select q from MonthlyQuota q

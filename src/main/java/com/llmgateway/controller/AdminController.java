@@ -13,6 +13,8 @@ import com.llmgateway.dto.ProjectResponse;
 import com.llmgateway.dto.QuotaResponse;
 import com.llmgateway.dto.TenantResponse;
 import com.llmgateway.service.AdminService;
+import java.util.List;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -32,14 +35,29 @@ public class AdminController {
         this.adminService = adminService;
     }
 
+    @GetMapping("/tenants")
+    public List<TenantResponse> listTenants() {
+        return adminService.listTenants();
+    }
+
     @PostMapping("/tenants")
     public ResponseEntity<TenantResponse> createTenant(@RequestBody CreateTenantRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(adminService.createTenant(request));
     }
 
+    @GetMapping("/projects")
+    public List<ProjectResponse> listProjects(@RequestParam("tenantId") Long tenantId) {
+        return adminService.listProjects(tenantId);
+    }
+
     @PostMapping("/projects")
     public ResponseEntity<ProjectResponse> createProject(@RequestBody CreateProjectRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(adminService.createProject(request));
+    }
+
+    @GetMapping("/keys")
+    public List<ApiKeyResponse> listKeys(@RequestParam("projectId") Long projectId) {
+        return adminService.listApiKeys(projectId);
     }
 
     @PostMapping("/keys")
@@ -52,6 +70,11 @@ public class AdminController {
         return ResponseEntity.ok(adminService.revokeApiKey(keyId));
     }
 
+    @GetMapping("/models")
+    public List<ModelResponse> listModels() {
+        return adminService.listModels();
+    }
+
     @PostMapping("/models")
     public ResponseEntity<ModelResponse> createModel(@RequestBody CreateModelRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(adminService.createModel(request));
@@ -60,6 +83,14 @@ public class AdminController {
     @PostMapping("/pricing")
     public ResponseEntity<PricingResponse> createPricing(@RequestBody CreatePricingRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(adminService.createPricing(request));
+    }
+
+    @GetMapping("/quotas")
+    public List<QuotaResponse> listQuotas(
+            @RequestParam("projectId") Long projectId,
+            @RequestParam(value = "billingMonth", required = false) String billingMonth
+    ) {
+        return adminService.listQuotas(projectId, billingMonth);
     }
 
     @PostMapping("/quotas")

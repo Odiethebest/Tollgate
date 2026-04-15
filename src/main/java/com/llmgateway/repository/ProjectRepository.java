@@ -10,5 +10,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     List<Project> findByTenantTenantId(Long tenantId);
 
+    List<Project> findByTenantTenantIdOrderByProjectIdAsc(Long tenantId);
+
     Optional<Project> findFirstByNameOrderByProjectIdAsc(String name);
 }

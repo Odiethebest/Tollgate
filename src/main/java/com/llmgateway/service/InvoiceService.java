@@ -67,4 +67,25 @@ public class InvoiceService {
 
         return new InvoiceGenerateResponse(billingMonth, results.size(), results);
     }
+
+    @Transactional(readOnly = true)
+    public List<InvoiceGenerateItemResponse> listInvoices(String billingMonthInput) {
+        String billingMonth = ValidationUtils.validateBillingMonth(billingMonthInput);
+        return invoiceRepository.findByBillingMonthOrderByProjectProjectIdAsc(billingMonth).stream()
+                .map(this::toInvoiceItemResponse)
+                .toList();
+    }
+
+    private InvoiceGenerateItemResponse toInvoiceItemResponse(Invoice invoice) {
+        return new InvoiceGenerateItemResponse(
+                invoice.getInvoiceId(),
+                invoice.getProject().getProjectId(),
+                invoice.getProject().getName(),
+                invoice.getBillingMonth(),
+                invoice.getTotalCost(),
+                invoice.getTotalTokens(),
+                invoice.isPaid(),
+                invoice.getIssuedAt()
+        );
+    }
 }
