@@ -37,6 +37,8 @@ public class GatewayService {
     private static final String STATUS_FAILED = "failed";
     private static final String REASON_KEY_REVOKED = "KEY_REVOKED";
     private static final String REASON_QUOTA_EXCEEDED = "QUOTA_EXCEEDED";
+    private static final String ACTION_TENANT_SUSPENDED = "TENANT_SUSPENDED";
+    private static final String ACTION_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE";
     private static final String ACTION_REQUEST_ACCEPTED = "REQUEST_ACCEPTED";
     private static final String ACTION_REQUEST_FAILED = "REQUEST_FAILED";
     private static final String ERROR_TYPE_LLM_SERVICE = "LLM_SERVICE_ERROR";
@@ -84,12 +86,13 @@ public class GatewayService {
         String keyHash = HashUtils.sha256Hex(rawApiKey);
         ApiKey apiKey = apiKeyRepository.findByKeyHash(keyHash)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "API key not found"));
+        String idempotencyKey = normalizeIdempotencyKey(requestBody.idempotencyKey());
 
         LlmModel model = llmModelRepository.findById(requestBody.modelId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model not found"));
 
         if ("revoked".equals(apiKey.getStatus())) {
-            GatewayRequest deniedRequest = createDeniedRequest(apiKey, model, requestBody, null);
+            GatewayRequest deniedRequest = createDeniedRequest(apiKey, model, requestBody, idempotencyKey);
             DeniedEvent deniedEvent = createDeniedEvent(deniedRequest, REASON_KEY_REVOKED, null);
             createAuditLog(deniedRequest, apiKey, REASON_KEY_REVOKED, "Request denied because key is revoked");
 
@@ -108,15 +111,6 @@ public class GatewayService {
             );
             return new GatewayResult(HttpStatus.FORBIDDEN, response);
         }
-
-        String currentMonth = YearMonth.now().toString();
-        MonthlyQuota quota = monthlyQuotaRepository.findForUpdate(apiKey.getProject().getProjectId(), currentMonth)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No quota configured"));
-
-        ModelPricing pricing = modelPricingRepository.findByModelModelIdAndBillingMonth(model.getModelId(), currentMonth)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No pricing configured"));
-
-        String idempotencyKey = normalizeIdempotencyKey(requestBody.idempotencyKey());
         if (idempotencyKey != null) {
             Optional<GatewayRequest> existing = gatewayRequestRepository
                     .findByProjectProjectIdAndIdempotencyKey(apiKey.getProject().getProjectId(), idempotencyKey);
@@ -124,6 +118,39 @@ public class GatewayService {
                 return buildIdempotentResult(existing.get());
             }
         }
+
+        if ("suspended".equals(apiKey.getProject().getTenant().getStatus())) {
+            return buildRejectedResult(
+                    apiKey,
+                    model,
+                    requestBody,
+                    idempotencyKey,
+                    HttpStatus.FORBIDDEN,
+                    ACTION_TENANT_SUSPENDED,
+                    "Tenant is suspended",
+                    "Request denied because tenant is suspended"
+            );
+        }
+
+        if (!model.isActive()) {
+            return buildRejectedResult(
+                    apiKey,
+                    model,
+                    requestBody,
+                    idempotencyKey,
+                    HttpStatus.BAD_REQUEST,
+                    ACTION_MODEL_UNAVAILABLE,
+                    "Model is not available",
+                    "Request denied because model is inactive"
+            );
+        }
+
+        String currentMonth = YearMonth.now().toString();
+        MonthlyQuota quota = monthlyQuotaRepository.findForUpdate(apiKey.getProject().getProjectId(), currentMonth)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No quota configured"));
+
+        ModelPricing pricing = modelPricingRepository.findByModelModelIdAndBillingMonth(model.getModelId(), currentMonth)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No pricing configured"));
 
         if (containsFailureTrigger(requestBody.prompt())) {
             return buildFailedResult(apiKey, model, requestBody, idempotencyKey);
@@ -231,12 +258,8 @@ public class GatewayService {
         }
 
         if (STATUS_DENIED.equals(existing.getStatus())) {
-            String deniedReason = deniedEventRepository.findByRequestRequestId(existing.getRequestId())
-                    .map(DeniedEvent::getReason)
-                    .orElse(REASON_QUOTA_EXCEEDED);
-            HttpStatus statusCode = REASON_KEY_REVOKED.equals(deniedReason)
-                    ? HttpStatus.FORBIDDEN
-                    : HttpStatus.TOO_MANY_REQUESTS;
+            String deniedReason = resolveDeniedReason(existing);
+            HttpStatus statusCode = toHttpStatus(deniedReason);
             GatewaySubmitResponse body = new GatewaySubmitResponse(
                     existing.getRequestId(),
                     existing.getStatus(),
@@ -295,6 +318,35 @@ public class GatewayService {
         deniedEvent.setReason(reason);
         deniedEvent.setThresholdPct(thresholdPct);
         return deniedEventRepository.save(deniedEvent);
+    }
+
+    private GatewayResult buildRejectedResult(
+            ApiKey apiKey,
+            LlmModel model,
+            GatewaySubmitRequest requestBody,
+            String idempotencyKey,
+            HttpStatus httpStatus,
+            String action,
+            String message,
+            String details
+    ) {
+        GatewayRequest deniedRequest = createDeniedRequest(apiKey, model, requestBody, idempotencyKey);
+        createAuditLog(deniedRequest, apiKey, action, details);
+
+        GatewaySubmitResponse response = new GatewaySubmitResponse(
+                deniedRequest.getRequestId(),
+                deniedRequest.getStatus(),
+                message,
+                deniedRequest.getComputedCost(),
+                null,
+                null,
+                null,
+                null,
+                action,
+                false,
+                deniedRequest.getRequestedAt()
+        );
+        return new GatewayResult(httpStatus, response);
     }
 
     private GatewayResult buildFailedResult(
@@ -402,6 +454,24 @@ public class GatewayService {
 
     private boolean containsFailureTrigger(String prompt) {
         return prompt != null && prompt.contains(FAILURE_TRIGGER);
+    }
+
+    private String resolveDeniedReason(GatewayRequest request) {
+        return deniedEventRepository.findByRequestRequestId(request.getRequestId())
+                .map(DeniedEvent::getReason)
+                .orElseGet(() -> auditLogRepository.findTopByRequestRequestIdOrderByLogIdDesc(request.getRequestId())
+                        .map(AuditLog::getAction)
+                        .orElse(REASON_QUOTA_EXCEEDED));
+    }
+
+    private HttpStatus toHttpStatus(String deniedReason) {
+        if (REASON_KEY_REVOKED.equals(deniedReason) || ACTION_TENANT_SUSPENDED.equals(deniedReason)) {
+            return HttpStatus.FORBIDDEN;
+        }
+        if (ACTION_MODEL_UNAVAILABLE.equals(deniedReason)) {
+            return HttpStatus.BAD_REQUEST;
+        }
+        return HttpStatus.TOO_MANY_REQUESTS;
     }
 
     public record GatewayResult(HttpStatus httpStatus, GatewaySubmitResponse body) {
