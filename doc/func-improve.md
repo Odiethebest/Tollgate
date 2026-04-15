@@ -1,538 +1,178 @@
 # Tollgate 功能完善清单
 
-这份文档用于整理当前项目还没有完善的功能点，并按照代码实际依赖顺序和 presentation 风险来排序任务优先级。
-
-排序原则不是“哪个看起来最想做”，而是“哪个如果不先做，后面的功能和演示都会不稳定或不成立”。
-
-## 排序原则
-
-1. 启动与数据初始化层
-   这一层决定应用每次启动后的数据状态是否可靠。如果这里不稳定，后面的 CRUD、报表、演示数据都会失真。
-2. 核心网关事务链路
-   这是项目最核心的业务链路，直接对应鉴权、配额扣减、审计、计费。
-3. 管理 API 与查询层
-   这一层决定项目是否真的能覆盖课程要求里的 CRUD 和 query execution。
-4. 前端演示层
-   这一层决定你能否在 5-6 分钟 demo 中顺畅展示功能，而不是一直切 curl / Postman 补漏洞。
-5. 交付与工程质量层
-   这一层不一定影响第一次演示，但会影响老师对“工程完整度”的判断。
+排序原则：不是"哪个看起来最想做"，而是"哪个不先做，后面的演示就会塌"。
 
 ---
 
-## P0 启动与数据初始化层
+## P0 数据初始化稳定性
 
-这一组任务必须最优先处理，因为它们位于所有功能的最前面。
+### 1. 停止每次启动自动清库
 
-### 1. 拆分 schema 初始化与 demo seed，停止“每次启动清库”
+**当前问题**：`data.sql` 开头执行 `TRUNCATE ... RESTART IDENTITY CASCADE`，服务每次重启都会清空所有数据，包括演示时现场创建的 tenant、key、request。
 
-**当前现状**
+**影响**：老师问"你刚才创建的 project 在哪"，重启之后就没了，CRUD 可信度直接归零。
 
-- `src/main/resources/application.properties` 中开启了 `spring.sql.init.mode=always`。
-- `src/main/resources/data.sql` 一开始就执行 `TRUNCATE ... RESTART IDENTITY CASCADE`。
+**做法**：
+- 把 `TRUNCATE` 从 `data.sql` 移除
+- 改为只在第一次初始化时执行 seed，用 `INSERT ... ON CONFLICT DO NOTHING` 代替无条件插入
+- Railway 上只需跑一次 seed，之后重启不会清数据
 
-**问题影响**
+**完成标准**：服务重启后，数据库里的数据完整保留。
 
-- 服务每次启动都会清空并重建演示数据。
-- 你现场创建的 tenant、project、api key、request、invoice，只要服务重启就会丢失。
-- 这会直接削弱 CRUD 演示的可信度，因为“Create 之后能否持久存在”是最基础的预期。
+### 2. 准备一把可直接演示的 API Key
 
-**为什么优先级最高**
+**当前问题**：seed 里的 `key_hash` 用的是 `md5`，运行时鉴权用 `SHA-256`，两者对不上，种子 key 无法直接用于网关调用。
 
-- 所有后续任务都依赖稳定数据。
-- 如果这一层不修，老师很容易在问答里抓到“为什么一重启数据就没了”。
+**不建议**：改 seed 里的 hash（需要预先算好每个 raw key 的 SHA-256 值，维护成本高）。
 
-**建议动作**
+**建议做法**：写一个 `DemoKeyInitializer` 组件，应用启动后检查是否存在 label 为 `demo-key` 的 key，如果不存在就自动调用 `KeyService` 签发一把，raw key 固定为环境变量 `DEMO_API_KEY`（本地默认 `demo-1234-5678`），并打印到日志。
 
-1. 保留 `schema.sql` 自动执行，但把 destructive seed 和基础 seed 拆开。
-2. 新增专门的 demo 数据文件，例如：
-   - `data-demo.sql`：用于展示时快速重置环境。
-   - `data-base.sql`：用于最小可运行初始化。
-3. 使用 profile 或环境变量控制是否加载 demo seed。
-4. 默认本地开发和部署环境不要自动 `TRUNCATE`。
-5. 如果时间不够，至少先把 `TRUNCATE` 从默认启动路径移除。
-
-**完成标准**
-
-- 应用重启后，用户现场新建的数据不会被自动清除。
-- 需要重置演示环境时，可以手动切换到 demo seed 模式。
+**完成标准**：启动日志里能看到 demo key，直接复制进 GatewayTester 就能跑通。
 
 ---
 
-### 2. 统一 seed key 与运行时鉴权算法
+## P2 核心网关链路补全
 
-**当前现状**
+### 3. 补齐成功请求的 audit_log
 
-- `data.sql` 中种子 `api_key.key_hash` 使用的是 `md5(...) || md5(...)`。
-- 运行时 `GatewayService` 使用的是 `SHA-256` 对 `X-API-Key` 做查找。
+**当前问题**：拒绝路径会写 `audit_log`，成功路径不写。审计是整个项目的核心卖点，现在只审计了一半。
 
-**问题影响**
+**做法**：成功路径在写完 `response` 之后，追加一条 `audit_log(action='REQUEST_ACCEPTED', request_id, key_id, performed_by='gateway')`。
 
-- 种子数据里的 key 不能直接用于网关演示。
-- 前端 `GatewayPage` 无法直接拿 seed key 跑通，必须先调用 `/api/keys` 现签一把。
-- 这会增加 demo 时的操作复杂度，也容易出错。
+**完成标准**：演示时可以说"每一条请求，无论成功还是被拒，都有结构化审计记录"，并在 Audit 页面展示。
 
-**为什么排在第二**
+### 4. 明确 `failed` 状态口径，选一条路
 
-- 这个问题直接卡住最关键的 live demo 路径：签发 key -> submit request -> 看 quota/audit/report。
+`failed` 当前只在 seed 数据里存在，运行时不会产生。两个选项，选一个，不要两边都半做：
 
-**建议动作**
+**推荐选项 B（成本低，风险低）**：从 live demo 的叙事里移除 `failed`。统一口径为"运行时只有 `success` 和 `denied` 两种结果，`failed` 代表 LLM 服务侧异常，当前 mock 层不模拟该场景"。Audit Flags 页面的 Missing Response 数据来自 seed，仍可展示。
 
-1. 把 seed 中的 key hash 改成与运行时一致的 SHA-256。
-2. 为 demo 准备一组固定 raw key，并在文档中明确记录仅供本地演示使用。
-3. 如果不想在数据库中保存 raw key，至少准备一份演示脚本，在启动后自动签发一把测试 key。
+**备选选项 A（需要时间）**：在 mock 层加入可控失败条件（例如 prompt 包含关键词 `__fail__`），写入 `request(status='failed')` + `response(http_status=500)` + `audit_log(action='REQUEST_FAILED')`，并说明 quota 不扣减。
 
-**完成标准**
+**完成标准**：演示时对 `failed` 的解释自洽，不被追问倒。
 
-- 演示环境中存在至少一把可直接用于网关调用的测试 key。
-- 不需要在 presentation 现场临时解释“为什么种子数据里的 key 不能用”。
+### 5. 补全业务状态校验
 
----
+**当前问题**：tenant 是否 suspended、model 是否 active，在网关主链路里没有检查，字段只是摆设。
 
-## P1 核心网关事务链路
+**做法**：
+- 鉴权通过后，检查 `tenant.status`，若为 `suspended` 直接返回 403 并写 `audit_log`
+- 检查 `llm_model.is_active`，若为 false 返回 400
 
-这一组任务对应项目最核心的业务正确性。完成 P0 后，应立即处理这些问题。
-
-### 3. 补齐成功请求的 `audit_log`
-
-**当前现状**
-
-- 拒绝路径会写 `audit_log`，包括 `KEY_REVOKED` 和 `QUOTA_EXCEEDED`。
-- 成功路径目前只写 `request` 和 `response`，没有写 `audit_log`。
-
-**问题影响**
-
-- 当前并不是真正的“full audit trail”。
-- 如果老师追问“成功请求是否也被审计”，目前答案是不完整的。
-
-**为什么优先**
-
-- 审计是 README 和整体项目定位里反复强调的核心卖点。
-- 如果成功请求不落审计，系统叙事会出现明显缺口。
-
-**建议动作**
-
-1. 在成功路径中增加 `audit_log` 记录，例如 `REQUEST_ACCEPTED` 或 `REQUEST_COMPLETED`。
-2. 明确区分请求被接收、请求执行成功、请求被拒绝三种动作。
-3. 确保审计字段能反映 requestId、keyId、performedBy、details。
-
-**完成标准**
-
-- 成功、拒绝两类请求都能在审计表里追溯。
-- 演示时可以直接说“每条请求都有结构化审计记录”。
+**完成标准**：数据模型里定义的状态字段在运行时真正被消费，不是摆设。
 
 ---
 
-### 4. 明确并实现 `failed` 路径，或从 live 功能中移除
+## P3 CRUD 完整性
 
-**当前现状**
+### 6. 补齐核心资源的 Read 接口
 
-- 数据库和前端都承认 `request.status` 可以是 `success / failed / denied`。
-- 种子数据里也有 `failed`。
-- 但运行时 `GatewayService.submitRequest()` 实际只会生成 `success` 和 `denied`。
+**当前问题**：管理 API 基本只有 `POST`，没有 list/detail 查询，严格意义上不是完整 CRUD。
 
-**问题影响**
+**最小补充范围**（够演示就行，不要过度设计）：
 
-- 代码语义和真实行为不一致。
-- 当前 `failed` 只能靠 seed 数据展示，不是一个真实可演示的功能。
-- 老师如果问“failed 和 denied 的区别是什么，怎么触发 failed”，现在很难自洽。
+```
+GET /api/tenants
+GET /api/projects
+GET /api/keys?projectId={id}
+GET /api/models
+GET /api/quotas?projectId={id}&billingMonth={month}
+GET /api/invoices?projectId={id}
+```
 
-**为什么优先**
+**完成标准**：Create 之后能立刻 GET 到结果，演示链路完整。
 
-- 这是核心业务状态定义不闭合的问题。
-- 它会直接影响你对实体设计、状态流转和错误处理的解释。
+### 7. 明确 Update/Delete 的口径（不需要写新代码）
 
-**建议动作**
+这一项不需要补代码，只需要在 presentation 里主动说清楚：
 
-两种方案选一个即可，不要两边都半做：
+- API key：`revoke` 是软删除，不做物理删除（保留审计链）
+- model：`is_active` 切换代替删除
+- tenant：`status` 切换代替删除
+- request/response：append-only，不允许修改或删除，这是审计完整性的保障
 
-**方案 A：实现真实 failed 路径**
+说清楚比补代码更有效，老师通常认可这种设计决策。
 
-1. 在 mock LLM 层加入可控失败条件，例如：
-   - prompt 包含某个特定关键词时触发失败；
-   - 或固定小概率失败用于展示。
-2. 失败时写入：
-   - `request(status='failed')`
-   - `response(http_status=500 或 502, error_type=...)`
-   - `audit_log(action='REQUEST_FAILED')`
-3. 明确失败时 quota 是否回滚，并在 presentation 中说明规则。
+### 8. Invoice 查询闭环
 
-**方案 B：从运行时链路中移除 failed**
+**当前问题**：只有 `POST /api/invoices/generate`，没有查询接口，billing 模块是半成品。
 
-1. 如果项目当前不打算支持 mock 执行失败，就不要在 live demo 中强调 `failed`。
-2. 统一文案，说明当前运行时只有 accepted/denied 两类路径。
+**做法**：补 `GET /api/invoices?billingMonth={month}`，返回所有项目当月的 invoice 列表。前端不需要新页面，在 GatewayPage 或 AdminPage 里加一个简单表格即可。
 
-**完成标准**
-
-- `failed` 要么可真实触发并落库，要么在 presentation 里不再作为已完成功能出现。
+**完成标准**：generate 之后能立刻查看结果，不需要靠口头解释。
 
 ---
 
-### 5. 补全运行时业务状态校验
+## P4 前端演示层
 
-**当前现状**
+### 9. 修复 Gateway history 字段缺失
 
-- 网关只检查：
-  - API key 是否存在；
-  - key 是否 revoked；
-  - quota 是否存在且未超限；
-  - pricing 是否存在。
-- 但没有检查：
-  - tenant 是否 suspended；
-  - model 是否 active；
-  - 其他管理态资源是否允许被调用。
+**当前问题**：`GatewayPage` 的 session history 表里 `modelId` 和 `inputTokens` 显示 `—`，因为返回体里没有这两个字段。
 
-**问题影响**
+**做法**（3 行代码）：`setHistory` 时把提交时的 `body` 一起 merge 进去：
 
-- 数据模型里定义了资源状态，但运行时没有完全消费这些状态。
-- 这会让“数据库设计很完整，但业务规则没真正落到服务层”。
+```js
+setHistory(prev => [{
+  ...data,
+  modelId: body.modelId,
+  inputTokens: body.inputTokens,
+  submittedAt: new Date().toISOString()
+}, ...prev].slice(0, 10));
+```
 
-**为什么优先**
+**完成标准**：history 表每一列都有真实数据，演示时没有空列。
 
-- 它仍属于网关主链路的一部分，应该在报表和 UI 之前完成。
+### 10. 最小 AdminPage
 
-**建议动作**
+依赖 P3-6 的 Read 接口完成后再做。最低目标：一个页面能串完"创建 tenant → 创建 project → 签发 key → 设置 pricing → 设置 quota → 提交请求 → 查看 invoice"这条完整链路，不需要复杂样式。
 
-1. 若 tenant 为 `suspended`，直接拒绝请求并写审计。
-2. 若 model 为 inactive，返回明确错误并阻止提交。
-3. 根据需要补充 project 层面的调用限制。
-
-**完成标准**
-
-- 重要业务状态都能在运行时被真正执行。
-- 不会出现“状态字段只是摆设”的情况。
+如果 P3-6 没时间补，AdminPage 只做 Create 表单（只需要现有 POST 接口），演示时接受"创建后切到报表页查看结果"的折中路径。
 
 ---
 
-## P2 管理 API 与 CRUD 完整性
+## P5 工程质量（时间充裕再做）
 
-这一组任务决定你是否能自信地说项目覆盖了课程要求中的 CRUD operations。
+### 11. 关键路径集成测试
 
-### 6. 补齐资源管理的“Read”能力
+不需要高覆盖率，只需要能展示的测试结果。优先级排序：
 
-**当前现状**
+1. quota exceeded → 返回 429，quota 不变
+2. revoked key → 返回 403
+3. idempotent replay → 不重复扣 quota
+4. 成功请求 → request + response + audit_log 全部写入
 
-- 现在的管理接口主要是 `POST` 和少量 `PATCH`。
-- 报表接口很多，但资源管理层缺少 list/detail 查询。
-- 当前前端也没有 tenant/project/key/model/quota 的管理视图。
+**完成标准**：至少 2 个测试能在 `mvn test` 里跑绿，演示时展示测试报告截图。
 
-**问题影响**
+### 12. CORS 与环境配置
 
-- 严格意义上，这不是完整 CRUD。
-- 你可以演示 Create，但不能自然演示“创建后查看资源列表/详情”。
-
-**为什么排在这里**
-
-- 先要保证启动稳定、网关链路正确，补 Read 才有意义。
-- 同时它是前端管理页的前置依赖。
-
-**建议动作**
-
-至少补齐以下只读接口：
-
-1. `GET /api/tenants`
-2. `GET /api/tenants/{id}`
-3. `GET /api/projects`
-4. `GET /api/projects/{id}`
-5. `GET /api/keys`
-6. `GET /api/models`
-7. `GET /api/quotas`
-8. `GET /api/invoices` 或 `GET /api/invoices/{billingMonth}`
-
-**完成标准**
-
-- 每个被创建的核心资源，都至少能被读取和展示。
-- 你可以在 demo 中自然地说“先创建，再查询结果”。
+当前 `allowedOriginPatterns("*")` 对演示没问题。如果有时间，用环境变量区分 dev/prod，演示时说清楚即可。不是阻塞项。
 
 ---
 
-### 7. 明确资源管理的 Update/Delete 边界
-
-**当前现状**
-
-- 目前比较清晰的 Update 只有：
-  - revoke key；
-  - pricing upsert；
-  - quota upsert。
-- tenant、project、model 等没有显式更新能力。
-- Delete 也基本不存在。
-
-**问题影响**
-
-- 如果老师严格按 CRUD 问，你现在只能部分回答。
-- 另外，某些资源本来不适合物理删除，例如 key 和 request。
-
-**为什么排在 Read 之后**
-
-- 先把可读链路补齐，再讨论管理动作的边界更合理。
-
-**建议动作**
-
-1. 不要为了凑 CRUD 强行加物理删除。
-2. 明确采用“软状态管理”的资源：
-   - API key：revoke 代替 delete；
-   - model：active/inactive 代替 delete；
-   - tenant：active/suspended 代替 delete。
-3. 对适合更新的资源补 `PATCH`：
-   - tenant status；
-   - project name/environment；
-   - model active；
-   - quota limit/cost limit。
-4. 如果确实要做 delete，只建议给 demo 环境专用资源做受控删除。
-
-**完成标准**
-
-- 你能清楚说明“哪些是 Create/Read/Update/Delete，哪些采用状态迁移代替删除”。
-- 课程演示里不会被问倒在 CRUD 定义上。
-
----
-
-### 8. 补上 invoice 的查询和展示闭环
-
-**当前现状**
-
-- 现在只有 `POST /api/invoices/generate`。
-- 生成后没有配套的发票读取页面或专门查询接口。
-
-**问题影响**
-
-- 你可以说“系统支持生成 invoice”，但现场不容易展示“生成后的结果如何管理和查询”。
-- 这会让 billing 模块像是一个半成品。
-
-**建议动作**
-
-1. 增加 invoice 列表或按月查询接口。
-2. 最小化前端展示一张 invoice table 即可。
-3. 如果时间不够，至少准备好 Postman/curl + 返回 JSON 的展示路径。
-
-**完成标准**
-
-- Invoice 生成之后，可以立刻看到结果，而不是只能口头解释。
-
----
-
-## P3 前端演示层
-
-这一组任务决定你的 5-6 分钟 demo 是否顺滑。
-
-### 9. 修复 Gateway session history 的上下文字段缺失
-
-**当前现状**
-
-- `GatewayPage` 在成功提交后把返回体 `data` 塞进 `history`。
-- 但返回体里没有 `modelId` 和 `inputTokens`。
-- 因此前端 history 表里的对应列会显示 `—`。
-
-**问题影响**
-
-- 这是一个非常容易在现场被看到的小瑕疵。
-- 它会让页面看起来不像完整工具，更像草稿版 demo。
-
-**为什么排在前端层第一位**
-
-- 修改成本很低，但收益很高。
-- 它直接改善 live demo 观感。
-
-**建议动作**
-
-1. 把提交时的 `body` 一起写入 history。
-2. 或者让后端返回 `modelId`、`inputTokens`。
-3. 成本最低的做法是前端在 `setHistory` 时自己 merge：
-   - `modelId`
-   - `inputTokens`
-   - `idempotencyKey`
-   - `prompt` 可选
-
-**完成标准**
-
-- Session history 每一列都能展示真实上下文。
-
----
-
-### 10. 为 admin / invoice 增加最小可演示入口
-
-**当前现状**
-
-- 前端目前只覆盖：
-  - overview
-  - quota
-  - models
-  - audit
-  - gateway
-- 没有 admin 资源管理页，也没有 invoice 页。
-
-**问题影响**
-
-- 你演示 Create tenant/project/key/pricing/quota 时只能切到 Postman 或 curl。
-- 页面体验和叙事会断掉。
-
-**为什么排在这里**
-
-- 这一步依赖前面的 Read/list API 完成。
-- 如果 API 不补，这一步也做不起来。
-
-**建议动作**
-
-最低成本方案：
-
-1. 新增一个简单的 `AdminPage`，包含：
-   - Create tenant
-   - Create project
-   - Issue key
-   - Create pricing
-   - Create quota
-2. 新增一个简单的 `InvoicesPage`：
-   - generate invoice
-   - list generated invoices
-3. 不追求复杂样式，重点是把“课程要求里的 CRUD/Query”串成一个闭环。
-
-**完成标准**
-
-- 大部分演示可以在同一个前端里完成，不需要频繁切换工具。
-
----
-
-### 11. 给 presentation 准备明确的“auth 口径”
-
-**当前现状**
-
-- 课程模板里写了 “User login (if applicable)”。
-- 当前项目没有用户登录，而是 API key 认证。
-
-**这不是 bug，但需要主动说明**
-
-- 如果你不提前说明，老师可能会下意识问“登录在哪”。
-
-**建议动作**
-
-1. 在 presentation 里明确说明：
-   - 本项目不做 end-user login；
-   - 认证机制是 `X-API-Key`；
-   - 因为这是一个 multi-tenant API gateway，而不是面向普通终端用户的 SaaS 页面。
-2. 最好在架构图或开场页就讲清楚。
-
-**完成标准**
-
-- “为什么没有 login” 不再成为现场的被动解释点。
-
----
-
-## P4 交付与工程质量
-
-这一组任务不一定是最先做，但会影响老师对项目完成度的整体印象。
-
-### 12. 补自动化测试
-
-**当前现状**
-
-- 目前仓库里没有 `src/test`。
-
-**问题影响**
-
-- 并发锁、配额扣减、幂等、报表查询都只能靠口头解释和手工验证。
-- 对一个数据库课程项目来说，这会显得验证证据偏弱。
-
-**建议动作**
-
-至少补三类测试：
-
-1. `GatewayService` 单元或集成测试：
-   - valid key -> success
-   - revoked key -> 403
-   - quota exceeded -> 429
-   - idempotent replay -> 不重复扣 quota
-2. repository query 测试：
-   - model stats
-   - quota alerts
-   - missing responses
-3. validation 测试：
-   - invalid billing month
-   - invalid environment
-   - invalid keyId/date range
-
-**完成标准**
-
-- 至少能展示一组测试结果证明关键逻辑被验证过。
-
----
-
-### 13. 将 dashboard build 纳入后端打包/部署流程
-
-**当前现状**
-
-- `dashboard/vite.config.js` 会把前端 build 输出到 `src/main/resources/static`。
-- 但后端 `Dockerfile` 只复制 `pom.xml` 和 `src/`，不会自动构建 `dashboard/`。
-
-**问题影响**
-
-- 如果前端源码更新后忘记先手动 build，部署出去的仍可能是旧页面。
-- 这会带来“代码是新的，页面却是旧的”的交付风险。
-
-**建议动作**
-
-1. 在 CI/CD 或 Maven build 前加入 dashboard build 步骤。
-2. 至少在部署文档里写清楚：
-   - `cd dashboard && npm run build`
-   - 再执行后端打包。
-3. 更完整的做法是把前端构建并入统一构建链路。
-
-**完成标准**
-
-- 前端静态资源不会依赖手工同步。
-
----
-
-### 14. 收紧 CORS 与环境配置
-
-**当前现状**
-
-- `CorsConfig` 对 `/api/**` 采用 `allowedOriginPatterns("*")`。
-- 当前配置更偏 demo 友好，不偏生产安全。
-
-**问题影响**
-
-- 对课程演示不是大问题，但会影响“是否 production-ready”的回答。
-
-**建议动作**
-
-1. 用环境变量区分 dev/demo/prod 的允许源。
-2. 对演示环境保留宽松策略，对生产环境收紧。
-3. 一并整理 `app.yaml`、`.env.example`、本地运行文档里的配置说明。
-
-**完成标准**
-
-- 你可以在答辩中明确说：当前 demo 为了联调方便开放 CORS，但生产部署会按环境收紧。
-
----
-
-## Presentation 前的最小落地顺序
-
-如果离 presentation 只剩很短时间，建议按下面顺序补：
-
-1. **先做 P0-1**：停止启动时自动清库。
-2. **再做 P0-2**：准备一把可直接演示的 API key。
-3. **再做 P1-3**：补齐成功路径的 audit log。
-4. **再做 P3-9**：修 Gateway history 字段缺失。
-5. **再做 P2-6**：至少补一个最小资源读取链路，用来支持 CRUD 口径。
-6. **如果还有时间**：补 `failed` 路径或补最小 `AdminPage`。
+## Presentation 前最小落地顺序
+
+时间不够时，严格按这个顺序，做完一步确认再做下一步：
+
+| 步骤 | 任务 | 预估时间 |
+|---|---|---|
+| 0 | 修好 Railway 数据库连接，确认线上能访问 | 30 分钟 |
+| 1 | 移除启动时 TRUNCATE，改为 ON CONFLICT DO NOTHING | 1 小时 |
+| 2 | 加 DemoKeyInitializer，启动后自动签发演示 key | 1 小时 |
+| 3 | 成功路径补 audit_log | 30 分钟 |
+| 4 | 修 Gateway history 字段缺失（3 行代码） | 15 分钟 |
+| 5 | 补最小 Read 接口（6 个 GET） | 2 小时 |
+| 6 | 补全业务状态校验（tenant suspended / model inactive） | 1 小时 |
+| 7 | 如果还有时间：最小 AdminPage 或集成测试 | 视情况 |
 
 ---
 
 ## Presentation 中需要主动说明的边界
 
-下面这些内容不一定都要在演示前改完，但最好主动说明，避免被动挨问：
+这些不需要改代码，提前想好怎么说：
 
-1. 本项目采用 API key 认证，不做传统 user login。
-2. LLM 执行层是 mock，重点在数据库设计、事务一致性、审计和 SQL 查询。
-3. 当前前端更偏“运营 dashboard + gateway tester”，不是完整后台管理系统。
-4. 目前最完整的闭环是：
-   - 创建配置
-   - 提交网关请求
-   - 观察 quota / audit / reports / invoices
+- **没有 user login**：本项目的认证主体是 API key，不是终端用户。这是 API gateway 的标准设计，不是遗漏。
+- **LLM 是 mock**：重点在数据库设计、事务一致性和查询层，mock 是刻意的范围控制。
+- **`failed` 不在 live demo 路径里**：代表 LLM 服务侧异常，mock 层不模拟，seed 数据里有历史记录可以展示。
+- **前端是运营 dashboard，不是完整后台管理系统**：定位是监控和审计工具，Admin CRUD 是辅助入口。
+- **当前 CORS 宽松**：演示环境刻意开放，生产部署按环境收紧，这是有意识的配置决策。
 
----
-
-## 一句话总结
-
-当前项目的核心数据库设计和网关事务链路已经成型，但要更好地满足期末 presentation 和课程要求，最需要优先补的是：
-
-**数据初始化稳定性、可直接演示的鉴权链路、审计闭环、CRUD 完整性、以及前端演示入口。**
