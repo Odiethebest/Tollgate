@@ -38,6 +38,9 @@ public class GatewayService {
     private static final String REASON_KEY_REVOKED = "KEY_REVOKED";
     private static final String REASON_QUOTA_EXCEEDED = "QUOTA_EXCEEDED";
     private static final String ACTION_REQUEST_ACCEPTED = "REQUEST_ACCEPTED";
+    private static final String ACTION_REQUEST_FAILED = "REQUEST_FAILED";
+    private static final String ERROR_TYPE_LLM_SERVICE = "LLM_SERVICE_ERROR";
+    private static final String FAILURE_TRIGGER = "__fail__";
     private static final String ACTOR_GATEWAY = "gateway-service";
 
     private final ApiKeyRepository apiKeyRepository;
@@ -120,6 +123,10 @@ public class GatewayService {
             if (existing.isPresent()) {
                 return buildIdempotentResult(existing.get());
             }
+        }
+
+        if (containsFailureTrigger(requestBody.prompt())) {
+            return buildFailedResult(apiKey, model, requestBody, idempotencyKey);
         }
 
         int outputTokens = ThreadLocalRandom.current().nextInt(50, 501);
@@ -246,20 +253,22 @@ public class GatewayService {
             return new GatewayResult(statusCode, body);
         }
 
+        GatewayResponse response = gatewayResponseRepository.findByRequestRequestId(existing.getRequestId())
+                .orElse(null);
         GatewaySubmitResponse body = new GatewaySubmitResponse(
                 existing.getRequestId(),
                 existing.getStatus(),
                 "Idempotent replay",
                 existing.getComputedCost(),
                 null,
-                null,
-                null,
-                "REQUEST_FAILED",
+                response == null ? null : response.getLatencyMs(),
+                response == null ? null : response.getHttpStatus(),
+                response == null ? ACTION_REQUEST_FAILED : response.getErrorType(),
                 null,
                 true,
                 existing.getRequestedAt()
         );
-        return new GatewayResult(HttpStatus.INTERNAL_SERVER_ERROR, body);
+        return new GatewayResult(HttpStatus.BAD_GATEWAY, body);
     }
 
     private GatewayRequest createDeniedRequest(
@@ -288,6 +297,57 @@ public class GatewayService {
         return deniedEventRepository.save(deniedEvent);
     }
 
+    private GatewayResult buildFailedResult(
+            ApiKey apiKey,
+            LlmModel model,
+            GatewaySubmitRequest requestBody,
+            String idempotencyKey
+    ) {
+        int latencyMs = ThreadLocalRandom.current().nextInt(200, 3001);
+
+        GatewayRequest failedRequest = new GatewayRequest();
+        failedRequest.setApiKey(apiKey);
+        failedRequest.setModel(model);
+        failedRequest.setProject(apiKey.getProject());
+        failedRequest.setInputTokens(requestBody.inputTokens());
+        failedRequest.setStatus(STATUS_FAILED);
+        failedRequest.setIdempotencyKey(idempotencyKey);
+        failedRequest.setComputedCost(null);
+        failedRequest.setEnvironment(apiKey.getProject().getEnvironment());
+        failedRequest = gatewayRequestRepository.save(failedRequest);
+
+        GatewayResponse failedResponse = new GatewayResponse();
+        failedResponse.setRequest(failedRequest);
+        failedResponse.setOutputTokens(null);
+        failedResponse.setLatencyMs(latencyMs);
+        failedResponse.setHttpStatus(500);
+        failedResponse.setErrorType(ERROR_TYPE_LLM_SERVICE);
+        failedResponse.setRawResponse("Mock LLM failure triggered by __fail__ prompt");
+        failedResponse = gatewayResponseRepository.save(failedResponse);
+
+        createAuditLog(
+                failedRequest,
+                apiKey,
+                ACTION_REQUEST_FAILED,
+                formatFailedRequestDetails(failedRequest, failedResponse)
+        );
+
+        GatewaySubmitResponse response = new GatewaySubmitResponse(
+                failedRequest.getRequestId(),
+                failedRequest.getStatus(),
+                "Mock LLM service failure triggered",
+                failedRequest.getComputedCost(),
+                failedResponse.getOutputTokens(),
+                failedResponse.getLatencyMs(),
+                failedResponse.getHttpStatus(),
+                failedResponse.getErrorType(),
+                null,
+                false,
+                failedRequest.getRequestedAt()
+        );
+        return new GatewayResult(HttpStatus.BAD_GATEWAY, response);
+    }
+
     private void createAuditLog(GatewayRequest request, ApiKey apiKey, String action, String details) {
         AuditLog auditLog = new AuditLog();
         auditLog.setRequest(request);
@@ -305,6 +365,16 @@ public class GatewayService {
                 response.getOutputTokens(),
                 request.getComputedCost().toPlainString(),
                 response.getLatencyMs()
+        );
+    }
+
+    private String formatFailedRequestDetails(GatewayRequest request, GatewayResponse response) {
+        return String.format(
+                "inputTokens=%d errorType=%s latencyMs=%d trigger=%s",
+                request.getInputTokens(),
+                response.getErrorType(),
+                response.getLatencyMs(),
+                FAILURE_TRIGGER
         );
     }
 
@@ -328,6 +398,10 @@ public class GatewayService {
             return null;
         }
         return rawIdempotencyKey.trim();
+    }
+
+    private boolean containsFailureTrigger(String prompt) {
+        return prompt != null && prompt.contains(FAILURE_TRIGGER);
     }
 
     public record GatewayResult(HttpStatus httpStatus, GatewaySubmitResponse body) {

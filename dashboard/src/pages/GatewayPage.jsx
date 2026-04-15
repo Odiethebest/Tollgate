@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Zap, Send } from 'lucide-react'
 
 const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'
+const STATUS_COLORS = { success: '#4CAF82', failed: '#F5A623', denied: '#E84545' }
 
 function BackButton({ onClick }) {
   return (
@@ -22,10 +23,9 @@ function BackButton({ onClick }) {
 }
 
 function StatusBadge({ status }) {
-  const colors = { success: '#4CAF82', failed: '#F5A623', denied: '#E84545' }
   return (
     <span style={{
-      background: colors[status] || '#9B9B9B', color: 'white',
+      background: STATUS_COLORS[status] || '#9B9B9B', color: 'white',
       borderRadius: 6, padding: '2px 8px', fontSize: '0.75rem', fontWeight: 500,
     }}>
       {status}
@@ -47,6 +47,18 @@ function fmtDate(str) {
   const d = new Date(str)
   return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) + ', ' +
     d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function pushHistoryEntry(setHistory, data, body) {
+  setHistory(prev => [
+    {
+      ...data,
+      modelId: body.modelId,
+      inputTokens: body.inputTokens,
+      submittedAt: new Date().toISOString(),
+    },
+    ...prev,
+  ].slice(0, 10))
 }
 
 const INPUT_STYLE = {
@@ -113,12 +125,9 @@ export default function GatewayPage({
 
       const data = await res.json()
 
-      if (res.ok) {
+      if (res.ok || data?.status === 'failed') {
         setResponse(data)
-        setHistory(prev => [
-          { ...data, submittedAt: new Date().toISOString() },
-          ...prev,
-        ].slice(0, 10))
+        pushHistoryEntry(setHistory, data, body)
         onSubmitSuccess?.()
       } else {
         setError(data)
@@ -297,10 +306,12 @@ export default function GatewayPage({
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{
-                    background: '#4CAF82', color: 'white',
+                    background: STATUS_COLORS[response.status] || '#4CAF82', color: 'white',
                     borderRadius: 6, padding: '4px 10px', fontSize: '0.8rem', fontWeight: 600,
                   }}>
-                    {response.httpStatus ?? 200} OK
+                    {response.httpStatus != null
+                      ? `${response.httpStatus}${response.httpStatus < 400 ? ' OK' : ''}`
+                      : '—'}
                   </span>
                   <StatusBadge status={response.status || 'success'} />
                 </div>
@@ -326,6 +337,7 @@ export default function GatewayPage({
 
                 <div style={{ fontSize: '0.8rem', color: '#9B9B9B' }}>
                   Request #{response.requestId}
+                  {response.message ? ` · ${response.message}` : ''}
                 </div>
               </motion.div>
             )}
