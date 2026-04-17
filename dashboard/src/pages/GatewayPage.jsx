@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Zap, Send } from 'lucide-react'
 
@@ -97,6 +97,32 @@ export default function GatewayPage({
   submitted, setSubmitted,
 }) {
   const isDisabled = loading || !apiKey || !modelId || !inputTokens || !prompt
+
+  const [invoices, setInvoices] = useState([])
+  const [invoiceMonth, setInvoiceMonth] = useState('2026-04')
+  const [generating, setGenerating] = useState(false)
+
+  const fetchInvoices = async () => {
+    try {
+      const res = await fetch(`${BASE}/api/invoices?billingMonth=${invoiceMonth}`)
+      const data = await res.json()
+      setInvoices(Array.isArray(data) ? data : [])
+    } catch (e) {
+      setInvoices([])
+    }
+  }
+
+  const generateInvoice = async () => {
+    setGenerating(true)
+    try {
+      await fetch(`${BASE}/api/invoices/generate?billingMonth=${invoiceMonth}`, { method: 'POST' })
+      await fetchInvoices()
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  useEffect(() => { fetchInvoices() }, [])
 
   const handleSubmit = async () => {
     setSubmitted(true)
@@ -416,6 +442,78 @@ export default function GatewayPage({
             </tbody>
           </table>
         )}
+      </div>
+
+      {/* Invoice Section */}
+      <div style={{ background: '#fff', borderRadius: '20px',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.06)', padding: '24px', marginTop: '24px' }}>
+
+        <p style={{ fontSize: '0.8rem', fontWeight: 500, color: '#9B9B9B',
+                    textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '16px' }}>
+          INVOICES
+        </p>
+
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', alignItems: 'center' }}>
+          <input
+            type="month"
+            value={invoiceMonth}
+            onChange={e => setInvoiceMonth(e.target.value)}
+            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #F0F0EE',
+                     fontSize: '0.875rem', color: '#1A1A2E' }}
+          />
+          <button
+            onClick={generateInvoice}
+            disabled={generating}
+            style={{ padding: '8px 20px', background: 'linear-gradient(135deg, #FF6B6B, #FF8E53)',
+                     color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600,
+                     fontSize: '0.875rem', cursor: generating ? 'not-allowed' : 'pointer' }}
+          >
+            {generating ? 'Generating...' : 'Generate Invoice'}
+          </button>
+        </div>
+
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid #F0F0EE' }}>
+              {['Invoice ID', 'Project ID', 'Billing Month', 'Total Tokens', 'Total Cost', 'Paid'].map(h => (
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px',
+                                     fontSize: '0.75rem', color: '#9B9B9B',
+                                     textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {invoices.length === 0 ? (
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: '#9B9B9B' }}>
+                  No invoices for this month
+                </td>
+              </tr>
+            ) : invoices.map(inv => (
+              <tr key={inv.invoiceId} style={{ borderBottom: '1px solid #F0F0EE' }}>
+                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>#{inv.invoiceId}</td>
+                <td style={{ padding: '10px 12px' }}>Proj {inv.projectId}</td>
+                <td style={{ padding: '10px 12px' }}>{inv.billingMonth}</td>
+                <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                  {inv.totalTokens?.toLocaleString()}
+                </td>
+                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
+                  ${Number(inv.totalCost).toFixed(4)}
+                </td>
+                <td style={{ padding: '10px 12px' }}>
+                  <span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '0.75rem',
+                                 fontWeight: 500,
+                                 background: inv.paid ? '#E8F5E9' : '#FFF3E0',
+                                 color: inv.paid ? '#4CAF82' : '#F5A623' }}>
+                    {inv.paid ? 'Paid' : 'Unpaid'}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
