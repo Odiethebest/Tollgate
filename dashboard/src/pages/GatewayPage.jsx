@@ -159,6 +159,8 @@ export default function GatewayPage({
   const [keyLabel, setKeyLabel] = useState('demo-key')
   const [createdKey, setCreatedKey] = useState(null)
   const [revokedKey, setRevokedKey] = useState(false)
+  const [quotaConfigured, setQuotaConfigured] = useState(false)
+  const [pricingConfigured, setPricingConfigured] = useState(false)
   const [adminError, setAdminError] = useState(null)
   const [adminLoading, setAdminLoading] = useState(null)
 
@@ -227,6 +229,30 @@ export default function GatewayPage({
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Failed to issue key')
       setCreatedKey(data)
+
+      const currentMonth = new Date().toISOString().slice(0, 7)
+
+      try {
+        await fetch(`${BASE}/api/pricing`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modelId: 1, billingMonth: currentMonth, inputRate: 0.005, outputRate: 0.015 }),
+        })
+        setPricingConfigured(true)
+      } catch (e) {
+        console.error('Pricing auto-config failed:', e)
+      }
+
+      try {
+        await fetch(`${BASE}/api/quotas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: createdProject.projectId, billingMonth: currentMonth, tokenLimit: 10000, costLimit: 50 }),
+        })
+        setQuotaConfigured(true)
+      } catch (e) {
+        console.error('Quota auto-config failed:', e)
+      }
     } catch (e) {
       setAdminError(e.message)
     } finally {
@@ -719,8 +745,20 @@ export default function GatewayPage({
               {createdKey ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ fontSize: '0.8rem', color: revokedKey ? '#E84545' : '#4CAF82', fontWeight: 500 }}>
-                      {revokedKey ? '✗ Key revoked — status = revoked (soft delete, audit trail preserved)' : `✓ API key issued — Key ID ${createdKey.keyId}`}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <div style={{ fontSize: '0.8rem', color: revokedKey ? '#E84545' : '#4CAF82', fontWeight: 500 }}>
+                        {revokedKey ? '✗ Key revoked — status = revoked (soft delete, audit trail preserved)' : `✓ API key issued — Key ID ${createdKey.keyId}`}
+                      </div>
+                      {quotaConfigured && (
+                        <div style={{ fontSize: '0.8rem', color: '#4CAF82', fontWeight: 500 }}>
+                          ✓ Quota configured — 10,000 tokens for {new Date().toISOString().slice(0, 7)}
+                        </div>
+                      )}
+                      {pricingConfigured && (
+                        <div style={{ fontSize: '0.8rem', color: '#4CAF82', fontWeight: 500 }}>
+                          ✓ Pricing configured — Model 1 ready
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
