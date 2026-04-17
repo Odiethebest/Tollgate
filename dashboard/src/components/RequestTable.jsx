@@ -289,7 +289,7 @@ export default function RequestTable() {
                           <td style={{ ...TD_STYLE, textAlign: 'center' }}><GrayPill>Proj {row.projectId}</GrayPill></td>
                           <td style={{ ...TD_STYLE, textAlign: 'center' }}>{row.inputTokens?.toLocaleString() ?? '—'}</td>
                           <td style={{ ...TD_STYLE, textAlign: 'right', fontFamily: 'monospace' }}>
-                            ${(row.computedCost ?? 0).toFixed(4)}
+                            {row.computedCost != null ? `$${row.computedCost.toFixed(4)}` : '—'}
                           </td>
                         </tr>
                       ))}
