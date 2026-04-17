@@ -158,6 +158,7 @@ export default function GatewayPage({
   const [createdProject, setCreatedProject] = useState(null)
   const [keyLabel, setKeyLabel] = useState('demo-key')
   const [createdKey, setCreatedKey] = useState(null)
+  const [revokedKey, setRevokedKey] = useState(false)
   const [adminError, setAdminError] = useState(null)
   const [adminLoading, setAdminLoading] = useState(null)
 
@@ -192,6 +193,21 @@ export default function GatewayPage({
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Failed to create project')
       setCreatedProject(data)
+    } catch (e) {
+      setAdminError(e.message)
+    } finally {
+      setAdminLoading(null)
+    }
+  }
+
+  const revokeKey = async () => {
+    setAdminError(null)
+    setAdminLoading('revoke')
+    try {
+      const res = await fetch(`${BASE}/api/keys/${createdKey.keyId}/revoke`, { method: 'PATCH' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Failed to revoke key')
+      setRevokedKey(true)
     } catch (e) {
       setAdminError(e.message)
     } finally {
@@ -702,12 +718,16 @@ export default function GatewayPage({
               </div>
               {createdKey ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ fontSize: '0.8rem', color: '#4CAF82', fontWeight: 500 }}>
-                    ✓ API key issued — Key ID {createdKey.keyId}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ fontSize: '0.8rem', color: revokedKey ? '#E84545' : '#4CAF82', fontWeight: 500 }}>
+                      {revokedKey ? '✗ Key revoked — status = revoked (soft delete, audit trail preserved)' : `✓ API key issued — Key ID ${createdKey.keyId}`}
+                    </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <code style={{ background: '#F4F4F0', borderRadius: '6px', padding: '4px 10px',
-                                   fontSize: '0.8rem', color: '#1A1A2E', flex: 1, wordBreak: 'break-all' }}>
+                                   fontSize: '0.8rem', color: revokedKey ? '#E84545' : '#1A1A2E',
+                                   flex: 1, wordBreak: 'break-all',
+                                   textDecoration: revokedKey ? 'line-through' : 'none' }}>
                       {createdKey.rawKey}
                     </code>
                     <button onClick={() => setApiKey(createdKey.rawKey)}
@@ -716,9 +736,21 @@ export default function GatewayPage({
                                fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       Use this key ↑
                     </button>
+                    {!revokedKey && (
+                      <button onClick={revokeKey}
+                        disabled={adminLoading === 'revoke'}
+                        style={{ padding: '4px 12px', background: '#E84545', color: '#fff',
+                                 border: 'none', borderRadius: '6px', fontSize: '0.75rem',
+                                 fontWeight: 600, cursor: adminLoading === 'revoke' ? 'not-allowed' : 'pointer',
+                                 whiteSpace: 'nowrap' }}>
+                        {adminLoading === 'revoke' ? 'Revoking...' : 'Revoke Key'}
+                      </button>
+                    )}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: '#9B9B9B' }}>
-                    Shown once. Copy it now or click "Use this key" to auto-fill the form above.
+                    {revokedKey
+                      ? 'Now paste this key into the gateway form and submit — you will get a 403.'
+                      : 'Shown once. Copy it now or click "Use this key" to auto-fill the form above.'}
                   </div>
                 </div>
               ) : (
