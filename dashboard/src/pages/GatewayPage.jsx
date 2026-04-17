@@ -83,6 +83,30 @@ const LABEL_STYLE = {
   display: 'block',
 }
 
+const ADMIN_INPUT = {
+  padding: '8px 10px',
+  border: '1px solid #F0F0EE',
+  borderRadius: '8px',
+  fontSize: '0.875rem',
+  color: '#1A1A2E',
+  background: '#FAFAFA',
+  outline: 'none',
+}
+
+function adminBtnStyle(disabled) {
+  return {
+    padding: '8px 16px',
+    background: disabled ? '#ccc' : '#1A1A2E',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '0.875rem',
+    fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    whiteSpace: 'nowrap',
+  }
+}
+
 export default function GatewayPage({
   setActivePage, onSubmitSuccess,
   apiKey, setApiKey,
@@ -123,6 +147,76 @@ export default function GatewayPage({
   }
 
   useEffect(() => { fetchInvoices() }, [])
+
+  // Admin panel state
+  const [adminOpen, setAdminOpen] = useState(false)
+  const [tenantName, setTenantName] = useState('')
+  const [tenantEmail, setTenantEmail] = useState('')
+  const [createdTenant, setCreatedTenant] = useState(null)
+  const [projectName, setProjectName] = useState('')
+  const [projectEnv, setProjectEnv] = useState('dev')
+  const [createdProject, setCreatedProject] = useState(null)
+  const [keyLabel, setKeyLabel] = useState('demo-key')
+  const [createdKey, setCreatedKey] = useState(null)
+  const [adminError, setAdminError] = useState(null)
+  const [adminLoading, setAdminLoading] = useState(null)
+
+  const createTenant = async () => {
+    setAdminError(null)
+    setAdminLoading('tenant')
+    try {
+      const res = await fetch(`${BASE}/api/tenants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: tenantName, contactEmail: tenantEmail }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Failed to create tenant')
+      setCreatedTenant(data)
+    } catch (e) {
+      setAdminError(e.message)
+    } finally {
+      setAdminLoading(null)
+    }
+  }
+
+  const createProject = async () => {
+    setAdminError(null)
+    setAdminLoading('project')
+    try {
+      const res = await fetch(`${BASE}/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: createdTenant.tenantId, name: projectName, environment: projectEnv }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Failed to create project')
+      setCreatedProject(data)
+    } catch (e) {
+      setAdminError(e.message)
+    } finally {
+      setAdminLoading(null)
+    }
+  }
+
+  const issueKey = async () => {
+    setAdminError(null)
+    setAdminLoading('key')
+    try {
+      const res = await fetch(`${BASE}/api/keys`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: createdProject.projectId, label: keyLabel || null }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Failed to issue key')
+      setCreatedKey(data)
+    } catch (e) {
+      setAdminError(e.message)
+    } finally {
+      setAdminLoading(null)
+    }
+  }
 
   const handleSubmit = async () => {
     setSubmitted(true)
@@ -514,6 +608,135 @@ export default function GatewayPage({
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Admin Panel */}
+      <div style={{ background: '#fff', borderRadius: '20px',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.06)', padding: '24px', marginTop: '24px' }}>
+
+        <div
+          onClick={() => setAdminOpen(o => !o)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                   cursor: 'pointer', userSelect: 'none' }}
+        >
+          <p style={{ fontSize: '0.8rem', fontWeight: 500, color: '#9B9B9B',
+                      textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+            ADMIN — Initialize Tenant &amp; Credentials
+          </p>
+          <span style={{ color: '#9B9B9B', fontSize: '0.875rem' }}>{adminOpen ? '▲' : '▼'}</span>
+        </div>
+
+        {adminOpen && (
+          <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {adminError && (
+              <div style={{ padding: '10px 14px', background: '#FFF5F5', border: '1px solid #E84545',
+                            borderRadius: '8px', fontSize: '0.8rem', color: '#E84545' }}>
+                {adminError}
+              </div>
+            )}
+
+            {/* Step 1 — Tenant */}
+            <div style={{ border: '1px solid #F0F0EE', borderRadius: '12px', padding: '16px' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#9B9B9B',
+                            textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>
+                Step 1 · Create Tenant
+              </div>
+              {createdTenant ? (
+                <div style={{ fontSize: '0.8rem', color: '#4CAF82', fontWeight: 500 }}>
+                  ✓ Tenant created — ID {createdTenant.tenantId} · {createdTenant.name}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <input placeholder="Tenant name" value={tenantName}
+                    onChange={e => setTenantName(e.target.value)} style={ADMIN_INPUT} />
+                  <input placeholder="Contact email" value={tenantEmail}
+                    onChange={e => setTenantEmail(e.target.value)} style={ADMIN_INPUT} />
+                  <button onClick={createTenant}
+                    disabled={adminLoading === 'tenant' || !tenantName || !tenantEmail}
+                    style={adminBtnStyle(adminLoading === 'tenant' || !tenantName || !tenantEmail)}>
+                    {adminLoading === 'tenant' ? 'Creating...' : 'Create Tenant'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Step 2 — Project */}
+            <div style={{ border: '1px solid #F0F0EE', borderRadius: '12px', padding: '16px',
+                          opacity: createdTenant ? 1 : 0.4 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#9B9B9B',
+                            textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>
+                Step 2 · Create Project{createdTenant ? ` (Tenant #${createdTenant.tenantId})` : ''}
+              </div>
+              {createdProject ? (
+                <div style={{ fontSize: '0.8rem', color: '#4CAF82', fontWeight: 500 }}>
+                  ✓ Project created — ID {createdProject.projectId} · {createdProject.name} [{createdProject.environment}]
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <input placeholder="Project name" value={projectName}
+                    onChange={e => setProjectName(e.target.value)}
+                    disabled={!createdTenant} style={ADMIN_INPUT} />
+                  <select value={projectEnv} onChange={e => setProjectEnv(e.target.value)}
+                    disabled={!createdTenant}
+                    style={{ ...ADMIN_INPUT, width: 'auto' }}>
+                    <option value="dev">dev</option>
+                    <option value="staging">staging</option>
+                    <option value="prod">prod</option>
+                  </select>
+                  <button onClick={createProject}
+                    disabled={adminLoading === 'project' || !createdTenant || !projectName}
+                    style={adminBtnStyle(adminLoading === 'project' || !createdTenant || !projectName)}>
+                    {adminLoading === 'project' ? 'Creating...' : 'Create Project'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Step 3 — API Key */}
+            <div style={{ border: '1px solid #F0F0EE', borderRadius: '12px', padding: '16px',
+                          opacity: createdProject ? 1 : 0.4 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#9B9B9B',
+                            textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>
+                Step 3 · Issue API Key{createdProject ? ` (Project #${createdProject.projectId})` : ''}
+              </div>
+              {createdKey ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#4CAF82', fontWeight: 500 }}>
+                    ✓ API key issued — Key ID {createdKey.keyId}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <code style={{ background: '#F4F4F0', borderRadius: '6px', padding: '4px 10px',
+                                   fontSize: '0.8rem', color: '#1A1A2E', flex: 1, wordBreak: 'break-all' }}>
+                      {createdKey.rawKey}
+                    </code>
+                    <button onClick={() => setApiKey(createdKey.rawKey)}
+                      style={{ padding: '4px 12px', background: '#1A1A2E', color: '#fff',
+                               border: 'none', borderRadius: '6px', fontSize: '0.75rem',
+                               fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      Use this key ↑
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#9B9B9B' }}>
+                    Shown once. Copy it now or click "Use this key" to auto-fill the form above.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <input placeholder="Key label (optional)" value={keyLabel}
+                    onChange={e => setKeyLabel(e.target.value)}
+                    disabled={!createdProject} style={ADMIN_INPUT} />
+                  <button onClick={issueKey}
+                    disabled={adminLoading === 'key' || !createdProject}
+                    style={adminBtnStyle(adminLoading === 'key' || !createdProject)}>
+                    {adminLoading === 'key' ? 'Issuing...' : 'Issue API Key'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
