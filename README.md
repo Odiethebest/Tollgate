@@ -156,10 +156,12 @@ Content-Type: application/json
 
 | Status | Condition |
 |---|---|
-| `200 OK` | Quota available, mock response returned |
+| `200 OK` | Quota available, mock response returned (or idempotent replay of a previous success) |
+| `400` | Validation failure, model inactive (`MODEL_UNAVAILABLE`), or no pricing / quota configured for the current month |
 | `401` | API key not found |
-| `403` | Key has been revoked |
-| `429` | Monthly token quota exceeded |
+| `403` | Key has been revoked (`KEY_REVOKED`) or owning tenant is suspended (`TENANT_SUSPENDED`) |
+| `429` | Monthly token quota exceeded (`QUOTA_EXCEEDED`) |
+| `502` | Mock LLM failure triggered by `__fail__` in the prompt, or idempotent replay of a previously failed request |
 
 ### Reports & Audit
 
@@ -309,7 +311,7 @@ More runnable examples and local validation steps are documented in [`doc/local-
 Strictly speaking, `project_id` is derivable via `api_key → project`. It is stored directly on `request` to avoid a join on every analytical query, which would be the hot path at scale.
 
 **Single-table inheritance for API key lifecycle**
-`ActiveKey` and `RevokedKey` are modeled as a discriminator column (`status`) rather than two separate tables. This keeps key lookups to a single index scan and avoids joins on the critical authentication path.
+`ActiveKey` and `RevokedKey` are modeled as a discriminator column (`status`) rather than two separate tables. Authentication is a single `UNIQUE(key_hash)` index scan (`ApiKeyRepository.findByKeyHash`); the revocation check happens in the service layer (`GatewayService.submitRequest`) by reading `apiKey.status`, so revoked keys are still loaded, audited, and rejected with `KEY_REVOKED` rather than disappearing from the lookup path.
 
 **Pessimistic locking for quota**
 Optimistic locking (version column) would require retry logic in the application layer and still allows temporary overshoot. Pessimistic locking (`SELECT ... FOR UPDATE`) serializes quota deductions at the database level with no application-side retries needed, which is the correct choice for a hard budget constraint.

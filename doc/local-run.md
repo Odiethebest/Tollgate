@@ -194,16 +194,32 @@ curl -sS http://localhost:8080/api/audit/missing-responses
 
 ## 9. Get a Raw API Key for Dashboard Testing
 
-The seed data (`data.sql`) pre-populates tenants, projects, and quotas, but the stored key hashes use MD5 and are not usable with the gateway (which expects SHA-256). You must issue a new key via the Admin API to get a valid raw key.
+The seed data (`data.sql`) pre-populates tenants, projects, models, and pricing/quota rows, but every seeded key hash is `md5(label) || md5(label || '-v2')` (two MD5 hex strings concatenated to fill the 64-char column) — the gateway computes `HashUtils.sha256Hex(rawApiKey)` and cannot reproduce those hashes from any raw input. To call `/api/gateway/submit` you must issue a new key via the Admin API.
 
-The fastest path uses project 1 (TechCorp-Dev), which already has quota configured for the current month.
+`GatewayService.submitRequest` looks up quota and pricing for `YearMonth.now()`, while `data.sql` only seeds rows for `billingMonth = '2026-04'`. Unless your machine clock is in April 2026, you must also create pricing **and** quota for the current month before the first submit will succeed. (The dashboard's admin panel does this automatically when you click "Issue API Key"; the curl path below does it explicitly.)
 
-Issue a key:
+The fastest path uses project 1 (TechCorp-Dev). Or, if the backend has finished booting, use the auto-issued demo key `demo-1234-5678` (see `doc/demo.md` and `DemoKeyInitializer`) — the demo key is already attached to a project and does not need to be re-issued.
 
 ```bash
-curl -s -X POST http://localhost:8080/api/keys \
+MONTH=$(date +%Y-%m)
+
+# 1. Issue a key (raw key returned once)
+RAW_KEY=$(curl -s -X POST http://localhost:8080/api/keys \
   -H "Content-Type: application/json" \
-  -d '{"projectId": 1, "label": "dashboard-test"}' | jq '{keyId: .keyId, rawKey: .rawKey}'
+  -d '{"projectId": 1, "label": "dashboard-test"}' \
+  | python3 -c 'import sys, json; print(json.load(sys.stdin)["rawKey"])')
+
+# 2. Configure pricing for the current month
+curl -s -X POST http://localhost:8080/api/pricing \
+  -H "Content-Type: application/json" \
+  -d "{\"modelId\":1,\"billingMonth\":\"$MONTH\",\"inputRate\":0.005,\"outputRate\":0.015}"
+
+# 3. Configure quota for the current month
+curl -s -X POST http://localhost:8080/api/quotas \
+  -H "Content-Type: application/json" \
+  -d "{\"projectId\":1,\"billingMonth\":\"$MONTH\",\"tokenLimit\":50000,\"costLimit\":200}"
+
+echo "$RAW_KEY"
 ```
 
 The `rawKey` value is returned once only. Copy it immediately.
@@ -217,9 +233,9 @@ Then fill in the Gateway page:
 | Input Tokens | any positive integer, e.g. `300` |
 | Prompt | any text |
 
-Note: each successful request deducts from the project's monthly token quota. Project 1 starts with 12,000 token limit and 7,600 used, leaving ~4,400 tokens before `QUOTA_EXCEEDED` is returned.
+Note: each successful request deducts from `monthly_quota.tokens_used`. If you skip step 3, submit returns `400 No quota configured`; if you skip step 2, it returns `400 No pricing configured`.
 
-Note: the database resets on every container restart (`spring.sql.init.mode=always`). Issue a new key after each restart.
+Note: the seed in `data.sql` uses `ON CONFLICT DO NOTHING` and `WHERE NOT EXISTS (SELECT 1 FROM request)`, so a container restart does **not** wipe runtime-created records (tenants, projects, keys, requests). Run `docker compose down -v` if you actually want a clean database.
 
 ## 10. Troubleshooting
 

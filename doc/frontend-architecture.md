@@ -115,10 +115,10 @@ All four are called at mount and on every `refreshDashboard` invocation.
 
 | Endpoint | Response shape | Consumers |
 |---|---|---|
-| `GET /api/reports/models/stats` | `[{ provider, modelName, totalRequests, successRate, avgLatencyMs }]` | HeroCard, ModelBarChart, ModelsPage |
-| `GET /api/audit/revoked-usage` | `[{ requestId, keyId, projectId, requestedAt, revokedAt }]` | HeroCard, StatPill, AuditPage |
+| `GET /api/reports/models/stats` | `[{ modelId, provider, modelName, successRate, avgLatencyMs, totalRequests }]` | HeroCard, ModelBarChart, ModelsPage |
+| `GET /api/audit/revoked-usage` | `[{ requestId, keyId, requestedAt, revokedAt, projectId }]` | HeroCard, StatPill, AuditPage |
 | `GET /api/audit/missing-responses` | `[{ requestId, keyId, modelId, projectId, requestedAt, status }]` | HeroCard, StatPill, AuditPage |
-| `GET /api/reports/quota-alerts` | `[{ projectId, projectName, tokenLimit, tokensUsed, usagePct }]` | QuotaDonut, StatPill, QuotaPage |
+| `GET /api/reports/quota-alerts` | `[{ projectId, projectName, billingMonth, tokensUsed, tokenLimit, usagePct }]` | QuotaDonut, StatPill, QuotaPage |
 
 ### Write Endpoint
 

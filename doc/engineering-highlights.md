@@ -60,22 +60,26 @@ Storing plaintext API keys in a database means a database breach immediately com
 
 ### The Decision
 
-At key issuance, the gateway generates a cryptographically random raw key, returns it to the caller **exactly once**, and stores only the SHA-256 hash:
+At key issuance, the gateway generates a random raw key (`UUID.randomUUID().toString()` in `AdminService.issueApiKey`), returns it to the caller **exactly once** in `ApiKeyResponse.rawKey`, and stores only the SHA-256 hex digest:
 
 ```java
-String rawKey = UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", "");
-String keyHash = HashUtils.sha256(rawKey);
+// AdminService.issueApiKey(IssueApiKeyRequest)
+return issueApiKey(request.projectId(), request.label(), UUID.randomUUID().toString());
+
+// inside the overload
+String keyHash = HashUtils.sha256Hex(normalizedRawKey);
 // only keyHash is persisted; rawKey is returned in the response body and never stored
 ```
 
 On every `POST /api/gateway/submit`, the `X-API-Key` header value is hashed before any database lookup:
 
 ```java
-String keyHash = HashUtils.sha256(rawApiKey);
-Optional<ApiKey> key = apiKeyRepo.findByKeyHash(keyHash);
+String keyHash = HashUtils.sha256Hex(rawApiKey);
+ApiKey apiKey = apiKeyRepository.findByKeyHash(keyHash)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "API key not found"));
 ```
 
-The `key_hash` column carries a `UNIQUE` index, so the lookup is an O(log n) index scan.
+The `key_hash` column carries a `UNIQUE` index (declared on the column in `schema.sql`), so the lookup is an O(log n) index scan.
 
 ### Properties
 
@@ -120,15 +124,15 @@ Two approaches for modeling `ActiveKey` / `RevokedKey`:
 
 ### The Decision
 
-Single table with a discriminator column. The authentication hot path is:
+Single table with a discriminator column. The authentication hot path is a single index scan against the `UNIQUE(key_hash)` constraint:
 
 ```sql
-SELECT * FROM api_key WHERE key_hash = ? AND status = 'active';
+SELECT * FROM api_key WHERE key_hash = ?;
 ```
 
-With a compound index on `(key_hash, status)`, this is a single index scan. A two-table model requires either a `UNION` across both tables or a lookup in `active_key` followed by a check against `revoked_key` on miss — two round-trips on the most latency-sensitive path in the system.
+`GatewayService.submitRequest` then inspects `apiKey.getStatus()` in Java — when it is `"revoked"`, the gateway writes a `denied` `request`, a `denied_event(reason=KEY_REVOKED)`, an `audit_log` entry, and returns `403`. A separate `idx_apikey_status` index (`schema.sql`) supports the compliance scans that filter on `status` directly. A two-table model would require either a `UNION` across both tables or a lookup in `active_key` followed by a check against `revoked_key` on miss — extra round-trips on the most latency-sensitive path in the system.
 
-Revocation is an `UPDATE` setting `status = 'revoked'` and recording `revoked_at`, rather than a `DELETE` + `INSERT`. This preserves the full foreign-key chain (`request → api_key`) for audit queries.
+Revocation is an `UPDATE` setting `status = 'revoked'` and stamping `revoked_at` (`AdminService.revokeApiKey`), rather than a `DELETE` + `INSERT`. This preserves the full foreign-key chain (`request → api_key`) for audit queries such as `findRevokedKeyUsage`, which joins requests against `api_key` to find calls that arrived **after** the revocation timestamp.
 
 ---
 
@@ -140,11 +144,10 @@ Revocation is an `UPDATE` setting `status = 'revoked'` and recording `revoked_at
 
 ```sql
 -- response
-request_id BIGINT NOT NULL REFERENCES request(request_id) ON DELETE CASCADE,
-UNIQUE (request_id)     -- exactly one response per request
+request_id INT NOT NULL UNIQUE REFERENCES request(request_id),  -- exactly one response per request
 
 -- denied_event
-request_id BIGINT NOT NULL REFERENCES request(request_id) ON DELETE CASCADE
+request_id INT NOT NULL REFERENCES request(request_id)
 ```
 
 The `UNIQUE (request_id)` constraint on `response` is stronger than a foreign key alone — it makes the relationship a true 1:1 participation constraint, not just a 1:N with an expected maximum of one.
@@ -188,17 +191,18 @@ Idempotency scope is per-project (not per-key), which means a caller can rotate 
 
 Cost could be computed at invoice generation time by joining `request` against `model_pricing` for the relevant billing month. This keeps the `request` row narrower.
 
-However, `model_pricing` is mutable: rates can be adjusted retroactively. Computing `computed_cost` at request time and storing it creates an immutable record of what was charged at the moment of consumption. Invoice generation then aggregates pre-computed costs:
+However, `model_pricing` is mutable: rates can be adjusted retroactively. Computing `computed_cost` at request time and storing it creates an immutable record of what was charged at the moment of consumption. Invoice generation then aggregates pre-computed costs per project (`GatewayRequestRepository.getInvoiceAggregate`):
 
 ```sql
-SELECT project_id, SUM(computed_cost), SUM(input_tokens)
-  FROM request
- WHERE DATE_TRUNC('month', requested_at) = :billingMonth
-   AND status = 'success'
- GROUP BY project_id;
+SELECT COALESCE(SUM(r.computed_cost), 0) AS totalCost,
+       CAST(COALESCE(SUM(r.input_tokens + COALESCE(rs.output_tokens, 0)), 0) AS BIGINT) AS totalTokens
+  FROM request r
+  LEFT JOIN response rs ON rs.request_id = r.request_id
+ WHERE r.project_id = :projectId
+   AND to_char(r.requested_at, 'YYYY-MM') = :billingMonth;
 ```
 
-This makes invoice generation a pure aggregation query with no pricing joins and no sensitivity to pricing changes after the fact.
+`computed_cost` is set to `NULL` on `denied` and `failed` rows in `GatewayService`, so the `SUM` naturally excludes them without a `WHERE status = 'success'` filter. This makes invoice generation a pure aggregation query with no pricing joins and no sensitivity to pricing changes after the fact.
 
 ---
 
@@ -214,15 +218,16 @@ All analytical queries return typed Spring Data projections:
 
 ```java
 public interface ModelStatsProjection {
+    Long getModelId();
     String getProvider();
     String getModelName();
+    BigDecimal getSuccessRate();
+    BigDecimal getAvgLatencyMs();
     Long getTotalRequests();
-    Long getSuccessCount();
-    Double getAvgLatencyMs();
 }
 ```
 
-The repository method returns `List<ModelStatsProjection>`, which the service maps to a response DTO. This provides:
+The repository method returns `List<ModelStatsProjection>`, which the service (`ReportService.getModelStats`) maps to `ModelStatsResponse`. This provides:
 
 - Compile-time field name checking.
 - Zero-boilerplate column mapping (Spring Data proxies the interface).
@@ -232,16 +237,18 @@ The repository method returns `List<ModelStatsProjection>`, which the service ma
 
 ## 9. Transaction Boundary Design
 
-Every write in the gateway submit flow is a single `@Transactional` method covering:
+Every write in the gateway submit flow is a single `@Transactional` method (`GatewayService.submitRequest`) covering:
 
-1. Quota row lock acquisition
-2. Quota deduction
-3. `GatewayRequest` persist
-4. `GatewayResponse` or `DeniedEvent` persist
+1. API key lookup (by SHA-256 hash) and idempotency check
+2. Quota row lock acquisition (`MonthlyQuotaRepository.findForUpdate`, `@Lock(PESSIMISTIC_WRITE)`)
+3. Quota deduction (`tokens_used += input_tokens`)
+4. `GatewayRequest` persist with status `success` / `denied` / `failed`
+5. `GatewayResponse` persist on success / failure paths; `DeniedEvent` persist on denied paths
+6. `AuditLog` persist with one of `REQUEST_ACCEPTED / REQUEST_FAILED / KEY_REVOKED / QUOTA_EXCEEDED / TENANT_SUSPENDED / MODEL_UNAVAILABLE`
 
-If any step fails, the entire transaction rolls back: no quota is deducted without a corresponding request record, and no request record exists without a quota deduction. This eliminates a class of partial-write inconsistencies that would otherwise require reconciliation jobs.
+If any step fails, the entire transaction rolls back: no quota is deducted without a corresponding request record, and no request record exists without an audit-log entry. This eliminates a class of partial-write inconsistencies that would otherwise require reconciliation jobs.
 
-The read-only report and audit endpoints use `@Transactional(readOnly = true)`, which allows the JPA session to skip dirty-checking and allows PostgreSQL to route the query to a read replica if one is configured.
+The read-only admin list endpoints use `@Transactional(readOnly = true)`, which lets the JPA session skip dirty-checking on the result set.
 
 ---
 
