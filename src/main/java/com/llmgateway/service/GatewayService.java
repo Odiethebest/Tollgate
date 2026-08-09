@@ -20,17 +20,21 @@ import com.llmgateway.repository.ModelPricingRepository;
 import com.llmgateway.repository.MonthlyQuotaRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class GatewayService {
+
+    private static final Logger logger = LoggerFactory.getLogger(GatewayService.class);
 
     private static final String STATUS_SUCCESS = "success";
     private static final String STATUS_DENIED = "denied";
@@ -53,6 +57,7 @@ public class GatewayService {
     private final GatewayResponseRepository gatewayResponseRepository;
     private final DeniedEventRepository deniedEventRepository;
     private final AuditLogRepository auditLogRepository;
+    private final TransactionTemplate transactionTemplate;
 
     public GatewayService(
             ApiKeyRepository apiKeyRepository,
@@ -62,7 +67,8 @@ public class GatewayService {
             GatewayRequestRepository gatewayRequestRepository,
             GatewayResponseRepository gatewayResponseRepository,
             DeniedEventRepository deniedEventRepository,
-            AuditLogRepository auditLogRepository
+            AuditLogRepository auditLogRepository,
+            TransactionTemplate transactionTemplate
     ) {
         this.apiKeyRepository = apiKeyRepository;
         this.llmModelRepository = llmModelRepository;
@@ -72,9 +78,17 @@ public class GatewayService {
         this.gatewayResponseRepository = gatewayResponseRepository;
         this.deniedEventRepository = deniedEventRepository;
         this.auditLogRepository = auditLogRepository;
+        this.transactionTemplate = transactionTemplate;
     }
 
-    @Transactional
+    /**
+     * Runs the submit flow in its own transaction. Transaction boundaries are managed explicitly
+     * rather than with {@code @Transactional} because the idempotency conflict below has to be
+     * recovered in a <em>second</em> transaction: once a unique-constraint violation reaches the
+     * JPA session, that session is poisoned and marked rollback-only, so the losing request cannot
+     * re-read the winner from inside the transaction that just failed. Splitting a private method
+     * out would not help either — self-invocation bypasses the Spring proxy.
+     */
     public GatewayResult submitRequest(String rawApiKey, GatewaySubmitRequest requestBody) {
         ValidationUtils.requireNonBlank(rawApiKey, "X-API-Key");
         if (requestBody == null) {
@@ -83,10 +97,50 @@ public class GatewayService {
         ValidationUtils.requirePositiveLong(requestBody.modelId(), "modelId");
         ValidationUtils.requirePositive(requestBody.inputTokens(), "inputTokens");
 
+        String idempotencyKey = normalizeIdempotencyKey(requestBody.idempotencyKey());
+        try {
+            return transactionTemplate.execute(status -> processSubmit(rawApiKey, requestBody, idempotencyKey));
+        } catch (DataIntegrityViolationException conflict) {
+            return replayConflictWinner(rawApiKey, idempotencyKey, conflict);
+        }
+    }
+
+    /**
+     * Recovers from a lost race on {@code UNIQUE (project_id, idempotency_key)}. Postgres blocks the
+     * losing INSERT on the unique index until the winning transaction resolves, so by the time the
+     * violation surfaces the winner has committed and is readable. Re-reading it turns the collision
+     * into the same idempotent replay a sequential retry would have produced.
+     */
+    private GatewayResult replayConflictWinner(
+            String rawApiKey,
+            String idempotencyKey,
+            DataIntegrityViolationException conflict
+    ) {
+        if (idempotencyKey == null) {
+            throw conflict;
+        }
+        return transactionTemplate.execute(status -> {
+            ApiKey apiKey = apiKeyRepository.findByKeyHash(HashUtils.sha256Hex(rawApiKey))
+                    .orElseThrow(() -> conflict);
+            GatewayRequest winner = gatewayRequestRepository
+                    .findByProjectProjectIdAndIdempotencyKey(apiKey.getProject().getProjectId(), idempotencyKey)
+                    .orElseThrow(() -> conflict);
+            // Hibernate logs the losing INSERT at ERROR before it reaches us. This line is what makes
+            // that stack trace explainable: the collision was expected and has been absorbed.
+            logger.info("Replaying request {} for idempotency key '{}' after losing an insert race",
+                    winner.getRequestId(), idempotencyKey);
+            return buildIdempotentResult(winner);
+        });
+    }
+
+    private GatewayResult processSubmit(
+            String rawApiKey,
+            GatewaySubmitRequest requestBody,
+            String idempotencyKey
+    ) {
         String keyHash = HashUtils.sha256Hex(rawApiKey);
         ApiKey apiKey = apiKeyRepository.findByKeyHash(keyHash)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "API key not found"));
-        String idempotencyKey = normalizeIdempotencyKey(requestBody.idempotencyKey());
 
         LlmModel model = llmModelRepository.findById(requestBody.modelId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model not found"));
