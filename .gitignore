@@ -1,5 +1,11 @@
 .DS_Store
 .env
+
+# iCloud conflict copies ("index 2.html", "app 3.js"). This project lives under a synced
+# Documents folder, and a build that rewrites src/main/resources/static/ regularly produces
+# them. Committing one would ship a duplicate asset inside the jar; a stale copy in target/
+# also breaks Spring Boot's main-class detection, since it sees two candidates.
+* [0-9].*
 .idea/
 .claude/
 phase4/
