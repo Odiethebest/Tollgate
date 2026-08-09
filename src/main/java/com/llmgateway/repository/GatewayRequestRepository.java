@@ -25,6 +25,7 @@ public interface GatewayRequestRepository extends JpaRepository<GatewayRequest, 
             FROM request r
             LEFT JOIN response rs ON rs.request_id = r.request_id
             WHERE r.project_id = :projectId
+              AND r.status = 'success'
               AND r.requested_at >= NOW() - (:days * INTERVAL '1 day')
             """, nativeQuery = true)
     ProjectCostProjection getProjectCostAndTokens(
@@ -136,6 +137,7 @@ public interface GatewayRequestRepository extends JpaRepository<GatewayRequest, 
             FROM request r
             LEFT JOIN response rs ON rs.request_id = r.request_id
             WHERE r.project_id = :projectId
+              AND r.status = 'success'
               AND to_char(r.requested_at, 'YYYY-MM') = :billingMonth
             """, nativeQuery = true)
     InvoiceAggregateProjection getInvoiceAggregate(

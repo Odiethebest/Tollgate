@@ -199,10 +199,13 @@ SELECT COALESCE(SUM(r.computed_cost), 0) AS totalCost,
   FROM request r
   LEFT JOIN response rs ON rs.request_id = r.request_id
  WHERE r.project_id = :projectId
+   AND r.status = 'success'
    AND to_char(r.requested_at, 'YYYY-MM') = :billingMonth;
 ```
 
-`computed_cost` is set to `NULL` on `denied` and `failed` rows in `GatewayService`, so the `SUM` naturally excludes them without a `WHERE status = 'success'` filter. This makes invoice generation a pure aggregation query with no pricing joins and no sensitivity to pricing changes after the fact.
+`computed_cost` is set to `NULL` on `denied` and `failed` rows in `GatewayService`, so the cost `SUM` would exclude them on its own. The explicit `status = 'success'` filter is there for the **token** total: `input_tokens` is recorded on every row regardless of outcome, so without the filter a request that was denied for exceeding quota would still be billed as consumed tokens. Both columns must describe the same set of requests, or the invoice reports a token count the cost cannot be reconciled against. The same filter applies to `getProjectCostAndTokens`, which backs the per-project cost report.
+
+Beyond that, invoice generation stays a pure aggregation: no pricing joins, and no sensitivity to pricing changes after the fact.
 
 ---
 

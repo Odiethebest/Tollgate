@@ -276,11 +276,12 @@ The system was designed around 20 analytical queries defined before schema imple
 **Q1 — Cost and token usage by project (last 30 days)**
 ```sql
 SELECT p.name, SUM(r.computed_cost) AS total_cost,
-       SUM(r.input_tokens + rs.output_tokens) AS total_tokens
+       SUM(r.input_tokens + COALESCE(rs.output_tokens, 0)) AS total_tokens
   FROM request r
-  JOIN response rs ON rs.request_id = r.request_id
-  JOIN project p   ON p.project_id  = r.project_id
- WHERE r.requested_at >= NOW() - INTERVAL '30 days'
+  LEFT JOIN response rs ON rs.request_id = r.request_id
+  JOIN project p        ON p.project_id  = r.project_id
+ WHERE r.status = 'success'
+   AND r.requested_at >= NOW() - INTERVAL '30 days'
  GROUP BY p.project_id, p.name;
 ```
 

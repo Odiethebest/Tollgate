@@ -92,7 +92,10 @@ public class GatewayService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model not found"));
 
         if ("revoked".equals(apiKey.getStatus())) {
-            GatewayRequest deniedRequest = createDeniedRequest(apiKey, model, requestBody, idempotencyKey);
+            // Checked before the idempotency lookup so a revoked key can never replay an earlier
+            // success. The denied row therefore carries no idempotency key: every attempt is
+            // recorded separately instead of colliding on UNIQUE (project_id, idempotency_key).
+            GatewayRequest deniedRequest = createDeniedRequest(apiKey, model, requestBody, null);
             DeniedEvent deniedEvent = createDeniedEvent(deniedRequest, REASON_KEY_REVOKED, null);
             createAuditLog(deniedRequest, apiKey, REASON_KEY_REVOKED, "Request denied because key is revoked");
 
