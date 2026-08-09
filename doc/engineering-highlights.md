@@ -264,3 +264,5 @@ The project uses `spring.jpa.hibernate.ddl-auto=none` — Hibernate does not gen
 - Hibernate's auto-generation (which produces subtly different SQL across providers) is eliminated as a source of schema drift.
 
 Seed data in `data.sql` is loaded in the same initialization pass, providing 3 tenants, 6 projects, 12 API keys, 3 LLM models, and 210 mock requests for immediate query validation without manual setup.
+
+Every timestamp and `billing_month` in the seed is derived from `CURRENT_DATE`, not written as a literal. The gateway resolves quota and pricing for `YearMonth.now()` on each submit, so a fixed month would leave a freshly seeded database rejecting its first request with `No quota configured` on any date outside that month — the seed would silently expire. The `project` and `api_key` inserts also carry an explicit `ORDER BY`, so `SERIAL` values are assigned in a stable order and references such as "project 1 is TechCorp-Dev" hold across rebuilds.

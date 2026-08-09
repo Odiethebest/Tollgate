@@ -1,5 +1,10 @@
 -- Seed data is intentionally idempotent so application restarts do not
 -- wipe out runtime-created records.
+--
+-- Billing months are derived from CURRENT_DATE rather than hard-coded. The gateway
+-- resolves quota and pricing for YearMonth.now() on every submit, so a fixed month
+-- would make a freshly seeded database reject the first request with
+-- "No quota configured" on any date outside that month.
 
 INSERT INTO tenant (name, contact_email, status) VALUES
   ('TechCorp', 'admin@techcorp.com', 'active'),
@@ -19,6 +24,7 @@ FROM (
     ('ResearchLab', 'ResearchLab-Prod', 'prod')
 ) AS v(tenant_name, project_name, environment)
 JOIN tenant t ON t.name = v.tenant_name
+ORDER BY t.tenant_id, v.project_name
 ON CONFLICT (tenant_id, name) DO NOTHING;
 
 INSERT INTO api_key (project_id, key_hash, status, revoked_at, label)
@@ -39,6 +45,7 @@ FROM (
     ('ResearchLab-Prod', md5('rl-prod-revoked') || md5('rl-prod-revoked-v2'), 'revoked', CURRENT_TIMESTAMP - INTERVAL '99 days', 'rl-prod-revoked')
 ) AS v(project_name, key_hash, status, revoked_at, label)
 JOIN project p ON p.name = v.project_name
+ORDER BY p.project_id, v.label
 ON CONFLICT (key_hash) DO NOTHING;
 
 INSERT INTO llm_model (provider, model_name, version, is_active) VALUES
@@ -47,31 +54,37 @@ INSERT INTO llm_model (provider, model_name, version, is_active) VALUES
   ('mistral', 'mistral-large', '2026-04', TRUE)
 ON CONFLICT (provider, model_name, version) DO NOTHING;
 
+-- Priced for the current month and the two before it. The join matches on the model's
+-- own version string; billing_month is a separate axis and must not be derived from it.
 INSERT INTO model_pricing (model_id, billing_month, input_rate, output_rate)
-SELECT m.model_id, v.billing_month, v.input_rate, v.output_rate
+SELECT m.model_id, months.billing_month, v.input_rate, v.output_rate
 FROM (
   VALUES
     ('openai', 'gpt-4o', '2026-04', 0.005000::DECIMAL(10,6), 0.015000::DECIMAL(10,6)),
     ('anthropic', 'claude-3-5-sonnet', '2026-04', 0.004000::DECIMAL(10,6), 0.012000::DECIMAL(10,6)),
     ('mistral', 'mistral-large', '2026-04', 0.003000::DECIMAL(10,6), 0.009000::DECIMAL(10,6))
-) AS v(provider, model_name, billing_month, input_rate, output_rate)
+) AS v(provider, model_name, version, input_rate, output_rate)
 JOIN llm_model m
   ON m.provider = v.provider
  AND m.model_name = v.model_name
- AND m.version = v.billing_month
+ AND m.version = v.version
+CROSS JOIN (
+  SELECT to_char(date_trunc('month', CURRENT_DATE) - (n || ' months')::INTERVAL, 'YYYY-MM') AS billing_month
+  FROM generate_series(0, 2) AS n
+) AS months
 ON CONFLICT (model_id, billing_month) DO NOTHING;
 
 INSERT INTO monthly_quota (project_id, billing_month, token_limit, tokens_used, cost_limit)
-SELECT p.project_id, v.billing_month, v.token_limit, v.tokens_used, v.cost_limit
+SELECT p.project_id, to_char(CURRENT_DATE, 'YYYY-MM'), v.token_limit, v.tokens_used, v.cost_limit
 FROM (
   VALUES
-    ('TechCorp-Dev', '2026-04', 12000::BIGINT, 7600::BIGINT, 300.00::DECIMAL(12,2)),
-    ('TechCorp-Prod', '2026-04', 10000::BIGINT, 9100::BIGINT, 260.00::DECIMAL(12,2)),
-    ('StartupAI-Dev', '2026-04', 15000::BIGINT, 6400::BIGINT, 320.00::DECIMAL(12,2)),
-    ('StartupAI-Prod', '2026-04', 18000::BIGINT, 12500::BIGINT, 400.00::DECIMAL(12,2)),
-    ('ResearchLab-Dev', '2026-04', 9000::BIGINT, 3800::BIGINT, 180.00::DECIMAL(12,2)),
-    ('ResearchLab-Prod', '2026-04', 22000::BIGINT, 9700::BIGINT, 450.00::DECIMAL(12,2))
-) AS v(project_name, billing_month, token_limit, tokens_used, cost_limit)
+    ('TechCorp-Dev', 12000::BIGINT, 7600::BIGINT, 300.00::DECIMAL(12,2)),
+    ('TechCorp-Prod', 10000::BIGINT, 9100::BIGINT, 260.00::DECIMAL(12,2)),
+    ('StartupAI-Dev', 15000::BIGINT, 6400::BIGINT, 320.00::DECIMAL(12,2)),
+    ('StartupAI-Prod', 18000::BIGINT, 12500::BIGINT, 400.00::DECIMAL(12,2)),
+    ('ResearchLab-Dev', 9000::BIGINT, 3800::BIGINT, 180.00::DECIMAL(12,2)),
+    ('ResearchLab-Prod', 22000::BIGINT, 9700::BIGINT, 450.00::DECIMAL(12,2))
+) AS v(project_name, token_limit, tokens_used, cost_limit)
 JOIN project p ON p.name = v.project_name
 ON CONFLICT (project_id, billing_month) DO NOTHING;
 
@@ -249,21 +262,27 @@ FROM request r
 JOIN api_key k ON k.key_id = r.key_id
 LEFT JOIN monthly_quota q
   ON q.project_id = r.project_id
- AND q.billing_month = '2026-04'
+ AND q.billing_month = to_char(CURRENT_DATE, 'YYYY-MM')
 WHERE r.status = 'denied'
   AND NOT EXISTS (SELECT 1 FROM denied_event);
 
+-- Last month's invoices, issued on the 1st of the current month.
 INSERT INTO invoice (project_id, billing_month, total_cost, total_tokens, issued_at, paid)
-SELECT p.project_id, v.billing_month, v.total_cost, v.total_tokens, v.issued_at, v.paid
+SELECT p.project_id,
+       to_char(date_trunc('month', CURRENT_DATE) - INTERVAL '1 month', 'YYYY-MM'),
+       v.total_cost,
+       v.total_tokens,
+       date_trunc('month', CURRENT_DATE) + INTERVAL '8 hours',
+       v.paid
 FROM (
   VALUES
-    ('TechCorp-Dev', '2026-03', 120.4321::DECIMAL(12,4), 54000::BIGINT, TIMESTAMP '2026-04-01 08:00:00', FALSE),
-    ('TechCorp-Prod', '2026-03', 260.9912::DECIMAL(12,4), 93000::BIGINT, TIMESTAMP '2026-04-01 08:00:00', FALSE),
-    ('StartupAI-Dev', '2026-03', 88.1000::DECIMAL(12,4), 32000::BIGINT, TIMESTAMP '2026-04-01 08:00:00', TRUE),
-    ('StartupAI-Prod', '2026-03', 310.8820::DECIMAL(12,4), 112000::BIGINT, TIMESTAMP '2026-04-01 08:00:00', FALSE),
-    ('ResearchLab-Dev', '2026-03', 43.7788::DECIMAL(12,4), 14000::BIGINT, TIMESTAMP '2026-04-01 08:00:00', TRUE),
-    ('ResearchLab-Prod', '2026-03', 0.0000::DECIMAL(12,4), 0::BIGINT, TIMESTAMP '2026-04-01 08:00:00', FALSE)
-) AS v(project_name, billing_month, total_cost, total_tokens, issued_at, paid)
+    ('TechCorp-Dev', 120.4321::DECIMAL(12,4), 54000::BIGINT, FALSE),
+    ('TechCorp-Prod', 260.9912::DECIMAL(12,4), 93000::BIGINT, FALSE),
+    ('StartupAI-Dev', 88.1000::DECIMAL(12,4), 32000::BIGINT, TRUE),
+    ('StartupAI-Prod', 310.8820::DECIMAL(12,4), 112000::BIGINT, FALSE),
+    ('ResearchLab-Dev', 43.7788::DECIMAL(12,4), 14000::BIGINT, TRUE),
+    ('ResearchLab-Prod', 0.0000::DECIMAL(12,4), 0::BIGINT, FALSE)
+) AS v(project_name, total_cost, total_tokens, paid)
 JOIN project p ON p.name = v.project_name
 ON CONFLICT (project_id, billing_month) DO NOTHING;
 

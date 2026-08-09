@@ -234,10 +234,10 @@ curl -X POST http://localhost:8080/api/tenants \
   -H "Content-Type: application/json" \
   -d '{"name":"TechCorp","contactEmail":"admin@techcorp.com"}'
 
-# Submit a gateway request (replace key with one issued via /api/keys)
-# Note: pricing/quota for current month must exist before submit.
+# Submit a gateway request using the demo key printed at startup.
+# Seeded pricing and quota track the current month, so this works on a fresh database.
 curl -X POST http://localhost:8080/api/gateway/submit \
-  -H "X-API-Key: <your-raw-key>" \
+  -H "X-API-Key: demo-1234-5678" \
   -H "Content-Type: application/json" \
   -d '{"modelId":1,"inputTokens":200,"prompt":"Hello"}'
 ```
