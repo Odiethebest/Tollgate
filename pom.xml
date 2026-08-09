@@ -56,18 +56,6 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-
-            <!-- App Engine Maven Plugin -->
-            <plugin>
-                <groupId>com.google.cloud.tools</groupId>
-                <artifactId>appengine-maven-plugin</artifactId>
-                <version>2.4.4</version>
-                <configuration>
-                    <projectId>database-llm-gateway</projectId>
-                    <version>1</version>
-                    <promote>true</promote>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
 </project>

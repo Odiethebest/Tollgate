@@ -32,7 +32,7 @@ flowchart TD
         HashUtils[HashUtils SHA-256]
     end
 
-    subgraph DB[PostgreSQL 15 on GCP Compute Engine]
+    subgraph DB[PostgreSQL 15 - Railway managed]
         Tenant[(tenant)]
         Project[(project)]
         ApiKey[(api_key)]
@@ -90,14 +90,14 @@ flowchart TD
 
     DemoInit --> ApiKey
 
-    GAE[GCP App Engine Standard Java 17] --- Backend
-    GAE -- jdbc:postgresql --> DB
+    RW[Railway - Nixpacks build, Java 17] --- Backend
+    RW -- jdbc:postgresql --> DB
 ```
 
 ## Domain Knowledge(业务领域 + 请求生命周期)
 
 - **业务领域**:面向「同一家公司内多团队共享 LLM 调用」的网关。核心抽象层级是 `tenant → project → api_key → request`(`schema.sql`)。billing month 用 `CHAR(7)` 字符串(`YYYY-MM`),quota 与 pricing 都以 `(project_id, billing_month)` / `(model_id, billing_month)` 为唯一键(`schema.sql`)。
-- **一次 `/api/gateway/submit` 的真实生命周期**(`GatewayService.submitRequest`,单个 `@Transactional`):
+- **一次 `/api/gateway/submit` 的真实生命周期**(`GatewayService.submitRequest`,经 `TransactionTemplate` 显式开启事务):
   1. 校验 `X-API-Key`、`modelId`、`inputTokens` 非空且为正(`ValidationUtils`);
   2. `HashUtils.sha256Hex` 计算 key_hash,`apiKeyRepository.findByKeyHash` 查 key,未命中直接 401;
   3. 若 `apiKey.status == "revoked"`:写一条 `status=denied` 的 `request`、`denied_event(reason=KEY_REVOKED)`、`audit_log`,返回 403;
@@ -128,7 +128,7 @@ flowchart TD
 ### b. 服务间通信
 - 对外:REST/JSON。Gateway 入口走 `X-API-Key` header(`GatewayController`),其它管理类接口直接走路径/查询参数。
 - 内部:无微服务拆分,Service 之间是普通 Spring bean 注入。
-- CORS:`CorsConfig` 对 `/api/**` 开启全 origin pattern、`GET/POST/PUT/PATCH/DELETE/OPTIONS`、`maxAge=3600`、不带凭证。
+- CORS:`CorsConfig` 对 `/api/**` 开启 `GET/POST/PUT/PATCH/DELETE/OPTIONS`、`maxAge=3600`、不带凭证;允许的 origin 来自 `CORS_ALLOWED_ORIGINS`,缺省 `*` 并打 WARN。
 
 ### c. 数据访问层
 - ORM:Spring Data JPA + Hibernate(`spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect`)。
@@ -144,11 +144,11 @@ flowchart TD
 ### d. 安全(认证 / 授权)
 - API key 仅以 **SHA-256 hex hash** 入库(`HashUtils.sha256Hex` + `api_key.key_hash UNIQUE`),原始 key 仅在 `POST /api/keys` 发放时返回一次(`ApiKeyResponse.rawKey`),后续都依赖 hash lookup。
 - 撤销是软删除:`PATCH /api/keys/{keyId}/revoke` 把 `status='revoked'` + `revoked_at = now()`,记录保留以便后续审计扫描(`findRevokedKeyUsage` 查询「revoked 之后又收到的请求」)。
-- 管理类接口(`AdminController`/`InvoiceController`)目前**没有鉴权层**(无 Spring Security、无 token 校验)。
-- CORS 用 `allowedOriginPatterns("*")` + `allowCredentials(false)`(`CorsConfig`)。
+- 管理类接口(`AdminController` 全部路由 + `POST /api/invoices/generate`)由 `AdminAuthInterceptor` 用共享密钥 `X-Admin-Token` 保护,常量时间比较;`ADMIN_API_TOKEN` 未设时拦截器不注册并打 WARN。没有引入 Spring Security,也没有 per-user 身份。
+- CORS 用 `allowedOriginPatterns(白名单)` + `allowCredentials(false)`(`CorsConfig`),白名单由环境变量注入。
 
 ### e. 事务 / 一致性 / 幂等
-- 整条 `submitRequest` 是单个 `@Transactional`,涉及到的所有写(`request / response / denied_event / audit_log / monthly_quota`)在同一事务里成功或回滚。
+- 整条提交链路在一个事务里完成,涉及到的所有写(`request / response / denied_event / audit_log / monthly_quota`)一起成功或回滚。事务边界用 `TransactionTemplate` 显式管理而非 `@Transactional`:并发撞上 `UNIQUE (project_id, idempotency_key)` 时,输家必须在**第二个**事务里重读赢家并返回幂等重放——约束冲突会污染 JPA session、把当前事务标记为 rollback-only,而拆私有方法又会因 self-invocation 绕过 Spring 代理。
 - 配额扣减用悲观行锁(`SELECT … FOR UPDATE`,`MonthlyQuotaRepository.findForUpdate`),解决并发请求同时打爆同一 `(project_id, billing_month)` quota 的问题。
 - 幂等:`request` 表 `UNIQUE (project_id, idempotency_key)`;`GatewayService` 在锁 quota 之前优先做幂等查询,命中直接重放历史响应,并把 `idempotent=true` 回填给客户端。
 - denied/failed 分支也会写入完整的 `request` 行(`status` ∈ `success/failed/denied`),不让失败请求在审计中“消失”。
@@ -161,11 +161,10 @@ flowchart TD
 
 ### g. 部署
 - 容器化:多阶段 `Dockerfile`(`maven:3.9.11-eclipse-temurin-17` 构建,`eclipse-temurin:17-jre` 运行,暴露 8080);`docker-compose.yml` 拉起 `postgres:15`(`tollgate-postgres`)+ `tollgate-app`,带 `pg_isready` healthcheck 与命名 volume `tollgate_pgdata`。
-- 多种部署目标:
-  - **GCP App Engine Standard(Java 17)** —— `app.yaml` 指定 `runtime: java17 / instance_class: F2`,通过 `appengine-maven-plugin` 的 `projectId=database-llm-gateway` 发布;README 给出 live URL `https://database-llm-gateway.uc.r.appspot.com`。
-  - **Nixpacks**(`nixpacks.toml`)分两阶段:`cd dashboard && npm install && npm run build` 然后 `mvn clean package -DskipTests`,启动命令 `java -jar target/llm-api-gateway-0.0.1-SNAPSHOT.jar`。
-  - **Procfile** 走 `web: java -jar target/...jar`(适配 Heroku 风格 PaaS)。
-- 数据库托管:PostgreSQL 15 跑在 GCP Compute Engine VM 上(README 注明 e2-medium / us-central),App Engine 通过环境变量注入连接串。
+- 部署:**Railway**,线上 `https://tollgate.odieyang.com`,push 到 `main` 触发构建发布。
+  - **Nixpacks**(`nixpacks.toml`)分两阶段:先 `cd dashboard && npm install && npm run build` 把前端产物写进 `src/main/resources/static/`,再 `mvn clean package -DskipTests`;启动命令 `java -jar target/llm-api-gateway-0.0.1-SNAPSHOT.jar`。前端与 API 同源,单 jar 交付。
+  - 仓库里另有 `Procfile`(`web: java -jar target/...jar`)。Railway 用 Nixpacks 构建时以 `nixpacks.toml` 的 `[start]` 为准,这份 Procfile 属于冗余备份。
+- 数据库托管:Railway 托管的 PostgreSQL 15,连接串与 `ADMIN_API_TOKEN` / `CORS_ALLOWED_ORIGINS` 一样由 Railway service variables 注入。
 - 无 CI/CD workflow 文件(仓库根没有 `.github/workflows/`)。
 
 ### h. 其他工程亮点
@@ -179,23 +178,23 @@ flowchart TD
 
 ## 简历可用 bullet 草稿(3-5 条)
 
-- 设计并实现 Tollgate —— 一个 Java 17 / Spring Boot 3.2.4 多租户 LLM API 网关,围绕 11 张 PostgreSQL 表(`tenant/project/api_key/llm_model/model_pricing/request/response/denied_event/monthly_quota/invoice/audit_log`)建模租户隔离、配额、审计与计费全链路,在单一 `@Transactional` 入口完成鉴权 → 配额扣减 → 落库。
+- 设计并实现 Tollgate —— 一个 Java 17 / Spring Boot 3.2.4 多租户 LLM API 网关,围绕 11 张 PostgreSQL 表(`tenant/project/api_key/llm_model/model_pricing/request/response/denied_event/monthly_quota/invoice/audit_log`)建模租户隔离、配额、审计与计费全链路,在单一事务入口完成鉴权 → 配额扣减 → 落库,并把并发幂等冲突降级为重放而非 500。
 - 通过 `MonthlyQuotaRepository` 的 `@Lock(PESSIMISTIC_WRITE)` 触发 `SELECT … FOR UPDATE` 行锁,叠加 `(project_id, idempotency_key)` 唯一约束,实现并发请求下的原子 token 扣减与可重放幂等,denied/failed/idempotent-replay 共用统一 `GatewaySubmitResponse` 返回结构。[待确认: 是否做过并发压测,QPS / 锁等待时延数据]
 - 使用 Spring Data Interface Projection + 8 段 native SQL 实现成本归因 / Top 5 项目 / 模型成功率与平均延迟 / Quota>80% 告警 / revoked-key 异常用量 / 缺失 response 异常等分析查询,直接为 React Dashboard 与月度发票生成提供数据底座。
 - 用 SHA-256 哈希存储 API key(原始 key 仅签发时返回一次)+ 软删除式撤销(`status=revoked` + `revoked_at`)+ 启动时自愈的 `DemoKeyInitializer`,构建可审计的 key 生命周期,并通过 `audit_log` 把每次 allow/deny 决策与 `request_id` 关联。
-- 多阶段 Docker 镜像 + `docker-compose`(Postgres 15 + 应用,带 healthcheck)+ GCP App Engine Standard(Java 17)/ Nixpacks 多目标部署,前端 React 18 + Vite 产物随 jar 一同发布,通过 `WebConfig` 将 SPA 路由 forward 到 `index.html`。[待确认: 线上是否仍在运行 / 是否有真实用户访问数据]
+- 多阶段 Docker 镜像 + `docker-compose`(Postgres 15 + 应用,带 healthcheck)+ Nixpacks 构建部署到 Railway(线上 `https://tollgate.odieyang.com`),前端 React 18 + Vite 产物随 jar 一同发布、与 API 同源,通过 `WebConfig` 将 SPA 路由 forward 到 `index.html`。[待确认: 是否有真实用户访问数据]
 
 ---
 
 ## ⚠️ 需我本人确认 / 补充的点
 
 1. **是否真的跑过并发压测**:仓库里没有任何 JMeter / Gatling / k6 脚本,也没有性能报告。如果想在简历里写 QPS / 平均延迟 / 锁等待数据,需要你自己跑过实测并补数字。
-2. **线上 URL 状态**:README 写 `https://database-llm-gateway.uc.r.appspot.com`,但仓库里没办法直接验证目前 GAE 是否还在运行、数据库 VM 是否还在跑。请确认。
-3. **DB host 信息泄露**:`app.yaml` 里直接 commit 了一个公网 IP `35.238.165.15` 和明文密码 `yourpassword`,`.env`/`.env.example` 也有 demo 凭据 —— 简历不要写这些,同时建议你尽快把 `app.yaml` 改成 GCP Secret Manager 或环境变量替换。
-4. **管理接口没有鉴权**:`/api/tenants`、`/api/projects`、`/api/keys`、`/api/quotas`、`/api/invoices/generate` 这些都没有任何身份校验(没用 Spring Security)。如果你和 mentor 说这是"生产级"网关会被追问 —— 建议要么主动承认"管理面 admin auth 还未实现,demo 用",要么补一个简单的 admin token check。
+2. **线上安全配置**:`https://tollgate.odieyang.com` 在线且可用,但 Railway 上没有设 `ADMIN_API_TOKEN` 和 `CORS_ALLOWED_ORIGINS` —— 管理接口目前对公网敞开。补上之前,别把这个地址当作"生产级"案例展示。
+3. **凭证卫生**:`app.yaml` 已随 GCP 配置一起删除。它历史上的 datasource 值一直是占位符(`myuser` / `yourpassword` / `mydb`),不是真实凭证,**没有需要轮换的东西**。唯一的真实信息是那台 Compute Engine 的公网 IP,现在已不可达。真正的凭证在 Railway 的 service variables 里,从未进过仓库 —— 保持这个做法。
+4. **管理接口鉴权的边界要说准**:已经有 `X-Admin-Token` 共享密钥校验(`AdminAuthInterceptor`,常量时间比较,`ADMIN_API_TOKEN` 未设则不启用并打 WARN)。但这是**部署级**密钥,不是 per-user 身份,也无法表达「这个管理员只能管租户 A」。前端的 `VITE_ADMIN_TOKEN` 在 Vite 构建期被内联进 bundle,不是秘密。被问「是不是生产级」时按这个口径答,别说成完整的鉴权授权体系。
 5. **真实流量规模**:仓库没有任何 token 量 / 请求量 / 租户数的真实指标。如果要写"支持 N 个租户 / 处理 M 次请求",请确认是否真有这些数字,否则改成"演示场景内造了 X 个 tenant / X 条 seed request"。
 6. **`__fail__` 触发的失败链路是 demo 特性**:在 `GatewayService.containsFailureTrigger` 中,任何 prompt 含 `__fail__` 就会返回 502 + `error_type=LLM_SERVICE_ERROR`。这是面试可以讲的设计亮点("方便演示失败路径与审计写入"),但要明确说明不是生产功能。
 7. **LLM 完全 mock**:`outputTokens` 和 `latencyMs` 都是 `ThreadLocalRandom`。如果对方误以为接了真实 OpenAI/Anthropic,请主动澄清"LLM 执行层故意 mock,项目重点在 schema 设计与事务正确性"(README 原话)。
-8. **README 与代码的小矛盾**:README 提到「`request_id` 在 `response` 上 UNIQUE」与代码一致;但 README 提到"GCP firewall 限制只允许 App Engine 服务账号 IP",这一项无法从仓库代码确认,需要你自己核实。
-9. **CI/CD**:仓库根没有 `.github/workflows/`,Bullet 里不要写"配 CI"。如果你有手动 mvn → appengine deploy 的脚本,记得自己描述清楚。
+8. **网络层防护无法从仓库确认**:数据库是否限制了入站来源,取决于 Railway 侧的网络配置,代码和文档都证明不了。要写进简历就自己先核实。
+9. **CI/CD**:仓库根没有 `.github/workflows/`。Railway 的 push-to-deploy 是平台功能,不是你写的流水线 —— 可以说"push 到 main 自动构建发布",但别写成"搭建了 CI/CD"。
 10. **数据库 schema 版本管理**:没有用 Flyway / Liquibase,而是直接 `schema.sql + data.sql`(`spring.sql.init.mode=always`)。这点要不要在简历上提"使用 Flyway"——目前不能写,因为代码里没有。

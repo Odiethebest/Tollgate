@@ -21,20 +21,19 @@ SELECT tokens_used, token_limit
    FOR UPDATE;
 ```
 
-The Java layer mirrors this with `@Lock(LockModeType.PESSIMISTIC_WRITE)` on the repository method, so the lock is always held inside a `@Transactional` boundary:
+The Java layer mirrors this with `@Lock(LockModeType.PESSIMISTIC_WRITE)` on the repository method. The lock is always acquired inside a transaction boundary — opened explicitly rather than with `@Transactional`, for the reason given in §9:
 
 ```java
-@Transactional
-public GatewayResult submitRequest(String rawApiKey, GatewaySubmitRequest body) {
-    MonthlyQuota quota = quotaRepo.findForUpdate(projectId, billingMonth)
-        .orElseThrow(...);          // row-level lock acquired here
+// inside transactionTemplate.execute(...)
+MonthlyQuota quota = quotaRepo.findForUpdate(projectId, billingMonth)
+    .orElseThrow(...);              // row-level lock acquired here
 
-    if (quota.getTokensUsed() + body.getInputTokens() > quota.getTokenLimit()) {
-        // persist DeniedEvent, return 429
-    }
-    quota.setTokensUsed(quota.getTokensUsed() + body.getInputTokens());
-    // persist request + response
-}                                   // lock released on commit
+if (quota.getTokensUsed() + body.inputTokens() > quota.getTokenLimit()) {
+    // persist DeniedEvent, return 429
+}
+quota.setTokensUsed(quota.getTokensUsed() + body.inputTokens());
+// persist request + response
+                                    // lock released on commit
 ```
 
 ### Why Not Optimistic Locking
@@ -256,7 +255,7 @@ The repository method returns `List<ModelStatsProjection>`, which the service (`
 
 ## 9. Transaction Boundary Design
 
-Every write in the gateway submit flow is a single `@Transactional` method (`GatewayService.submitRequest`) covering:
+Every write in the gateway submit flow happens in one transaction (`GatewayService.processSubmit`, run through `transactionTemplate.execute`) covering:
 
 1. API key lookup (by SHA-256 hash) and idempotency check
 2. Quota row lock acquisition (`MonthlyQuotaRepository.findForUpdate`, `@Lock(PESSIMISTIC_WRITE)`)
@@ -267,7 +266,13 @@ Every write in the gateway submit flow is a single `@Transactional` method (`Gat
 
 If any step fails, the entire transaction rolls back: no quota is deducted without a corresponding request record, and no request record exists without an audit-log entry. This eliminates a class of partial-write inconsistencies that would otherwise require reconciliation jobs.
 
-The read-only admin list endpoints use `@Transactional(readOnly = true)`, which lets the JPA session skip dirty-checking on the result set.
+### Why the boundary is explicit
+
+`submitRequest` itself is deliberately **not** annotated. It validates the request, then opens the transaction through `TransactionTemplate` so that it can catch a lost idempotency race and open a *second* transaction to resolve it (§6). `@Transactional` cannot express that: the recovery must run outside the failed transaction, and delegating to an annotated private method would not work because self-invocation bypasses the Spring proxy that applies the annotation.
+
+So there are exactly two transactions in the submit path — the main one, and a recovery one that runs only when the unique constraint rejects a concurrent duplicate.
+
+Elsewhere the annotation is still the right tool and is still used: `AdminService` and `InvoiceService` writes are `@Transactional`, and the read-only admin list endpoints use `@Transactional(readOnly = true)`, which lets the JPA session skip dirty-checking on the result set.
 
 ---
 

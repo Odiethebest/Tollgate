@@ -2,6 +2,9 @@
 
 排序原则：不是"哪个看起来最想做"，而是"哪个不先做，后面的演示就会塌"。
 
+> **进度**：1–10、12 已完成并合入。**唯一未做的是第 11 项（关键路径集成测试）**——`src/test/` 目录是空的。
+> 下面各项保留原始描述，作为决策记录；实现细节以代码和 `engineering-highlights.md` 为准。
+
 ---
 
 ## P0 数据初始化稳定性
@@ -172,18 +175,13 @@ setHistory(prev => [{
 
 ---
 
-### 12. CORS 收紧
+### 12. CORS 收紧 ✅ 已完成
 
-当前 `allowedOriginPatterns("*")` 对演示没问题。用环境变量区分：
+`CorsConfig` 从 `CORS_ALLOWED_ORIGINS` 读逗号分隔的来源白名单，缺省 `*` 并在启动时打 WARN。
 
-```java
-@Value("${cors.allowed-origins:*}")
-private String allowedOrigins;
-```
+一并做掉的还有原本没列进清单的**管理接口鉴权**：`ADMIN_API_TOKEN` 一旦设置，`AdminController` 全部路由 + `POST /api/invoices/generate` 要求 `X-Admin-Token`；不设则拦截器不注册，同样打 WARN。两者都是「缺省宽松 + 环境变量收紧 + 启动日志自曝」，演示与生产靠配置区分而不是靠分支。
 
-Railway 上设置 `CORS_ALLOWED_ORIGINS=https://tollgate.odieyang.com`，本地保持 `*`。
-
-演示时说明："demo 环境开放，生产部署按来源收紧，这是有意识的环境分离。"
+细节见 `engineering-highlights.md` §11。
 
 ---
 
@@ -213,4 +211,5 @@ Railway 上设置 `CORS_ALLOWED_ORIGINS=https://tollgate.odieyang.com`，本地�
 - **LLM 是 mock**：重点在数据库设计、事务一致性和查询层，mock 是刻意的范围控制。
 - **前端是运营 dashboard，不是完整后台管理系统**：定位是监控和审计工具，AdminPage 是辅助演示入口。
 - **软删除代替物理删除**：这是审计系统的工程标准，保留历史记录是设计要求，不是偷懒。
-- **CORS 当前宽松**：演示环境刻意开放，生产按环境变量收紧，已有配置基础。
+- **CORS 与管理接口鉴权缺省宽松**：不是遗漏，是环境分离。`CORS_ALLOWED_ORIGINS` 和 `ADMIN_API_TOKEN` 未设时放行并打 WARN，设了就生效——一个环境变量的事，不用改代码。
+- **前端的 `VITE_ADMIN_TOKEN` 不是秘密**：Vite 构建期常量替换，token 明文进 bundle。它只抬高公开 demo 被随手调用的成本；真要保护得把管理面放在登录后面。这点主动说，别等人问。

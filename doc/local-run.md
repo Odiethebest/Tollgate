@@ -98,6 +98,8 @@ Verify:
 env | grep SPRING_DATASOURCE
 ```
 
+`ADMIN_API_TOKEN` and `CORS_ALLOWED_ORIGINS` are intentionally left unset here. The admin API is then unauthenticated and any origin may call `/api/**` — both are logged as warnings at startup, and both are why the `curl` examples below carry no auth header. Setting `ADMIN_API_TOKEN` makes every admin call require `-H "X-Admin-Token: <token>"`.
+
 ## 7. Run the Backend
 
 From project root:

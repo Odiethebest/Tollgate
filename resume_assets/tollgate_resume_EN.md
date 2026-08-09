@@ -32,7 +32,7 @@ flowchart TD
         HashUtils[HashUtils SHA-256]
     end
 
-    subgraph DB[PostgreSQL 15 on GCP Compute Engine]
+    subgraph DB[PostgreSQL 15 - Railway managed]
         Tenant[(tenant)]
         Project[(project)]
         ApiKey[(api_key)]
@@ -90,14 +90,14 @@ flowchart TD
 
     DemoInit --> ApiKey
 
-    GAE[GCP App Engine Standard Java 17] --- Backend
-    GAE -- jdbc:postgresql --> DB
+    RW[Railway - Nixpacks build, Java 17] --- Backend
+    RW -- jdbc:postgresql --> DB
 ```
 
 ## Domain Knowledge (Business Model + Request Lifecycle)
 
 - **Domain**: a gateway for "multiple teams in the same organization sharing LLM usage." The core hierarchy is `tenant → project → api_key → request` (`schema.sql`). Billing periods use a `CHAR(7)` string (`YYYY-MM`); both quota and pricing are uniquely keyed by `(project_id, billing_month)` / `(model_id, billing_month)`.
-- **Lifecycle of one `/api/gateway/submit` call** (`GatewayService.submitRequest`, single `@Transactional`):
+- **Lifecycle of one `/api/gateway/submit` call** (`GatewayService.submitRequest`, transaction opened explicitly via `TransactionTemplate`):
   1. Validate `X-API-Key`, `modelId`, `inputTokens` are non-null/positive (`ValidationUtils`).
   2. `HashUtils.sha256Hex` the raw key; look it up via `apiKeyRepository.findByKeyHash`; miss → 401.
   3. If `apiKey.status == "revoked"`: persist a `status=denied` `request`, `denied_event(reason=KEY_REVOKED)`, and `audit_log`; return 403.
@@ -128,7 +128,7 @@ flowchart TD
 ### b. Service-to-service communication
 - External: REST/JSON. The gateway uses an `X-API-Key` header (`GatewayController`); admin endpoints take path/query parameters.
 - Internal: no microservice split — services are plain Spring beans wired by constructor injection.
-- CORS: `CorsConfig` enables `/api/**` for `GET/POST/PUT/PATCH/DELETE/OPTIONS`, `allowedOriginPatterns("*")`, `maxAge=3600`, `allowCredentials(false)`.
+- CORS: `CorsConfig` enables `/api/**` for `GET/POST/PUT/PATCH/DELETE/OPTIONS`, `maxAge=3600`, `allowCredentials(false)`; allowed origins come from `CORS_ALLOWED_ORIGINS`, defaulting to `*` with a startup warning.
 
 ### c. Data-access layer
 - ORM: Spring Data JPA + Hibernate (`spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect`).
@@ -144,11 +144,11 @@ flowchart TD
 ### d. Security (AuthN / AuthZ)
 - API keys are stored as **SHA-256 hex hashes only** (`HashUtils.sha256Hex` + `api_key.key_hash UNIQUE`). The raw key is returned exactly once on `POST /api/keys` (`ApiKeyResponse.rawKey`); afterwards everything is hash lookup.
 - Revocation is a soft delete: `PATCH /api/keys/{keyId}/revoke` sets `status='revoked'` and stamps `revoked_at`, preserving the row for audit (`findRevokedKeyUsage` joins requests against revoked keys to find post-revocation usage).
-- Admin endpoints (`AdminController`, `InvoiceController`) currently have **no auth layer** — no Spring Security, no admin token check.
-- CORS uses `allowedOriginPatterns("*")` with `allowCredentials(false)` (`CorsConfig`).
+- Admin endpoints (all of `AdminController` plus `POST /api/invoices/generate`) are gated by `AdminAuthInterceptor`, a shared-secret `X-Admin-Token` check using constant-time comparison. When `ADMIN_API_TOKEN` is unset the interceptor is not registered and startup logs a warning. No Spring Security, and no per-user identity.
+- CORS uses `allowedOriginPatterns(<configured list>)` with `allowCredentials(false)` (`CorsConfig`), the list injected from the environment.
 
 ### e. Transactions / consistency / idempotency
-- The entire `submitRequest` runs inside a single `@Transactional`; every write (`request / response / denied_event / audit_log / monthly_quota`) commits or rolls back together.
+- The whole submit path runs in one transaction; every write (`request / response / denied_event / audit_log / monthly_quota`) commits or rolls back together. The boundary is managed with `TransactionTemplate` rather than `@Transactional`: when a concurrent submit loses the race on `UNIQUE (project_id, idempotency_key)`, the loser has to re-read the winner in a **second** transaction, because the constraint violation poisons the JPA session and marks the current transaction rollback-only — and delegating to a private annotated method would not work, since self-invocation bypasses the Spring proxy.
 - Quota deduction uses a pessimistic row lock (`SELECT … FOR UPDATE` via `MonthlyQuotaRepository.findForUpdate`) to serialize concurrent debits against the same `(project_id, billing_month)`.
 - Idempotency: `request` has a `UNIQUE (project_id, idempotency_key)` constraint, and `GatewayService` checks for a prior request **before** locking the quota; on hit it replays the stored response and surfaces `idempotent=true` to the client.
 - Denied / failed branches still write a complete `request` row (`status` ∈ `success/failed/denied`), so no request "disappears" from the audit trail.
@@ -161,11 +161,10 @@ flowchart TD
 
 ### g. Deployment
 - Container build: multi-stage `Dockerfile` (`maven:3.9.11-eclipse-temurin-17` for build, `eclipse-temurin:17-jre` runtime, exposing 8080). `docker-compose.yml` brings up `postgres:15` (`tollgate-postgres`) plus the app with `pg_isready` healthcheck and a named volume `tollgate_pgdata`.
-- Multiple deploy targets are configured:
-  - **GCP App Engine Standard (Java 17)** — `app.yaml` specifies `runtime: java17 / instance_class: F2`; `appengine-maven-plugin` is wired with `projectId=database-llm-gateway`. README lists the live URL `https://database-llm-gateway.uc.r.appspot.com`.
-  - **Nixpacks** (`nixpacks.toml`): build phase runs `cd dashboard && npm install && npm run build` followed by `mvn clean package -DskipTests`; start command is `java -jar target/llm-api-gateway-0.0.1-SNAPSHOT.jar`.
-  - **Procfile** with `web: java -jar target/…jar` for Heroku-style PaaS.
-- Database hosting: PostgreSQL 15 on a GCP Compute Engine VM (README notes e2-medium / us-central); App Engine injects the JDBC URL via env variables.
+- Deployment: **Railway**, live at `https://tollgate.odieyang.com`; pushing to `main` triggers a build and deploy.
+  - **Nixpacks** (`nixpacks.toml`) builds in two phases: `cd dashboard && npm install && npm run build` writes the frontend into `src/main/resources/static/`, then `mvn clean package -DskipTests`. Start command is `java -jar target/llm-api-gateway-0.0.1-SNAPSHOT.jar`, so the dashboard and API ship in one jar and share an origin.
+  - A `Procfile` (`web: java -jar target/…jar`) is also present. With a Nixpacks build, `[start]` in `nixpacks.toml` wins, so the Procfile is a redundant fallback.
+- Database hosting: Railway-managed PostgreSQL 15; the JDBC URL is injected as a Railway service variable, as are `ADMIN_API_TOKEN` and `CORS_ALLOWED_ORIGINS`.
 - No CI/CD workflow files in the repo (no `.github/workflows/`).
 
 ### h. Engineering highlights
@@ -179,23 +178,23 @@ flowchart TD
 
 ## Resume Bullets (Drafts, 3–5)
 
-- Designed and implemented **Tollgate**, a Java 17 / Spring Boot 3.2.4 multi-tenant LLM API gateway whose 11-table PostgreSQL schema (`tenant / project / api_key / llm_model / model_pricing / request / response / denied_event / monthly_quota / invoice / audit_log`) models tenant isolation, quotas, audit, and billing; a single `@Transactional` entry point performs authentication, quota debit, and persistence end to end.
+- Designed and implemented **Tollgate**, a Java 17 / Spring Boot 3.2.4 multi-tenant LLM API gateway whose 11-table PostgreSQL schema (`tenant / project / api_key / llm_model / model_pricing / request / response / denied_event / monthly_quota / invoice / audit_log`) models tenant isolation, quotas, audit, and billing; a single transactional entry point performs authentication, quota debit, and persistence end to end, and degrades concurrent idempotency collisions into replays rather than 500s.
 - Implemented atomic token deduction under concurrent traffic by combining `@Lock(PESSIMISTIC_WRITE)` (`SELECT … FOR UPDATE`) on `monthly_quota` with a `(project_id, idempotency_key)` unique constraint, so denied / failed / idempotent-replay paths all return the same `GatewaySubmitResponse` shape. [TO CONFIRM: did you actually run concurrency / load tests with measured QPS or lock-wait latency?]
 - Built the analytics surface — cost attribution, top-5 projects per tenant, per-model success rate & average latency, >80% quota alerts, revoked-key compliance scan, missing-response anomaly scan — on top of 8 Spring Data **interface projections** backed by native SQL, powering both the React dashboard and the monthly invoice job.
 - Designed an auditable key lifecycle: store **SHA-256 hashes only** (raw key returned once on issue), soft-delete via `status=revoked` + `revoked_at`, self-healing `DemoKeyInitializer` on boot, and an `audit_log` row linked to every allow / deny decision via `request_id`.
-- Packaged the system with a multi-stage Docker image and `docker-compose` (Postgres 15 + app, with healthcheck) and shipped it to **GCP App Engine Standard (Java 17)** plus a **Nixpacks** target; bundled the React 18 + Vite dashboard inside the same jar via `WebConfig` SPA forwarding. [TO CONFIRM: is the live URL still up / any real traffic stats?]
+- Packaged the system with a multi-stage Docker image and `docker-compose` (Postgres 15 + app, with healthcheck) and shipped it to **Railway** via a **Nixpacks** build (live at `https://tollgate.odieyang.com`); bundled the React 18 + Vite dashboard inside the same jar via `WebConfig` SPA forwarding. [TO CONFIRM: is the live URL still up / any real traffic stats?]
 
 ---
 
 ## ⚠️ Items I Need YOU to Confirm / Provide
 
 1. **Whether you actually ran load tests.** There are no JMeter / Gatling / k6 scripts and no perf reports in the repo. Any QPS, average-latency, or lock-wait numbers must come from a test you personally ran — do not invent them.
-2. **Live URL status.** README advertises `https://database-llm-gateway.uc.r.appspot.com`, but the repo cannot prove it is still running. Verify before claiming "deployed to production."
-3. **Secret hygiene in the repo.** `app.yaml` commits a public IP `35.238.165.15` and the literal password `yourpassword`; `.env` / `.env.example` contain demo credentials. Do **not** mention these in the resume, and you should rotate / move them to GCP Secret Manager.
-4. **Admin endpoints have no authentication.** `/api/tenants`, `/api/projects`, `/api/keys`, `/api/quotas`, `/api/invoices/generate` have no auth layer. If a mentor / interviewer challenges "is this production-ready?", be honest that admin auth is unimplemented (or add a small token check before claiming it is).
+2. **Live deployment security.** `https://tollgate.odieyang.com` is up and serving, but Railway has neither `ADMIN_API_TOKEN` nor `CORS_ALLOWED_ORIGINS` set, so the admin API is open to the internet. Fix that before presenting the URL as a production example.
+3. **Secret hygiene.** `app.yaml` was removed along with the rest of the GCP config. Its datasource values were placeholders throughout its history (`myuser` / `yourpassword` / `mydb`), not live credentials, so **there is nothing to rotate**. The only real value was the Compute Engine public IP, which no longer accepts connections. Actual credentials live in Railway service variables and have never been in the repo — keep it that way.
+4. **State the admin-auth boundary precisely.** A shared-secret `X-Admin-Token` check is in place (`AdminAuthInterceptor`, constant-time comparison, disabled with a startup warning when `ADMIN_API_TOKEN` is unset). But it is a *deployment-level* secret, not a per-user identity, and it cannot express "this admin may manage tenant A only." The dashboard's `VITE_ADMIN_TOKEN` is inlined into the bundle by Vite at build time and is not a secret. Answer "is this production-ready?" on those terms — do not present it as a full authn/authz system.
 5. **Real traffic / scale numbers do not exist in the repo.** Don't write "supports N tenants / processes M requests" unless those are figures from runs you actually performed; otherwise rephrase as "seeded X tenants and X demo requests for testing."
 6. **The `__fail__` failure path is a demo feature.** `GatewayService.containsFailureTrigger` returns 502 + `error_type=LLM_SERVICE_ERROR` whenever the prompt contains `__fail__`. Worth mentioning as a deliberate observability test fixture, but not a production capability.
 7. **The LLM itself is fully mocked.** `outputTokens` and `latencyMs` are `ThreadLocalRandom`. If anyone assumes a real OpenAI / Anthropic integration, correct them — README itself says "The LLM execution layer is intentionally mocked."
-8. **One README claim cannot be verified from code.** README says "GCP firewall allows inbound TCP 5432 only from App Engine service account IPs." That is infrastructure config outside the repo — please confirm before stating it.
+8. **Network-level protection cannot be verified from the repo.** Whether the database restricts inbound sources depends on Railway-side networking, which neither the code nor the docs can prove. Verify it yourself before putting it on a resume.
 9. **No CI/CD pipeline.** No `.github/workflows/` directory exists. Do not write "set up CI/CD" unless you separately have scripts to show.
 10. **No migration tool.** Schema is loaded via raw `schema.sql + data.sql` (`spring.sql.init.mode=always`), not Flyway or Liquibase. Do not list Flyway/Liquibase on the resume — it isn't in the code.

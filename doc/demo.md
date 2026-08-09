@@ -56,6 +56,8 @@ Successful startup signs:
 - log contains `Started DemoApplication`
 - log contains `Demo API key ready`
 
+The startup log will also warn that `ADMIN_API_TOKEN` and `CORS_ALLOWED_ORIGINS` are unset. That is expected locally and is what keeps the `curl` examples below free of auth headers. If you export `ADMIN_API_TOKEN=<token>`, every admin call in section 5 needs `-H "X-Admin-Token: <token>"` or it returns `401`; the gateway, report, and audit calls are unaffected.
+
 Default demo API key:
 
 ```text

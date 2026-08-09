@@ -81,7 +81,8 @@ App.jsx
 ├── QuotaPage.jsx           expanded quota view; inline progress bars
 ├── ModelsPage.jsx          per-model detail cards; generated insight text
 ├── AuditPage.jsx           dark banner + two-column timelines; insight box
-├── GatewayPage.jsx         form + live response panel + session history table
+├── GatewayPage.jsx         form + live response panel + session history table,
+│                           plus an invoice section and a collapsible admin panel
 └── Footer.jsx
 ```
 
@@ -107,7 +108,9 @@ Overview cards wrap their content in `<motion.div layoutId="...">`. The correspo
 const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'
 ```
 
-`VITE_API_BASE` is the only environment variable the frontend needs. Local dev defaults to `localhost:8080`; production points to the App Engine URL.
+Local dev defaults to `localhost:8080`. In the Railway deployment the dashboard is served by the same jar as the API, so the two share an origin and `VITE_API_BASE` can be left at a relative default rather than pointing at a separate host.
+
+`VITE_ADMIN_TOKEN` is the second and last variable. When set it is attached as `X-Admin-Token` to the admin calls made from the Gateway page's admin panel, matching the backend's `ADMIN_API_TOKEN`. Vite substitutes `import.meta.env` values at **build time**, so the token is baked into the bundle and readable by anyone who loads the page — it is a speed bump for a public demo, not a secret, and the constant folding also means a bundle built without it can never send the header.
 
 ### Read Endpoints
 
@@ -144,6 +147,18 @@ if (res.ok) { … } else { setError(data) }
 | `403` | Display error panel; key has been revoked |
 | `429` | Display error panel; monthly quota exceeded |
 | Network failure | Display `'Network error — is the backend running?'` |
+
+### Admin Endpoints
+
+The admin panel and the invoice **Generate** button on the Gateway page call the protected routes — `POST /api/tenants`, `POST /api/projects`, `POST /api/keys`, `PATCH /api/keys/{id}/revoke`, `POST /api/pricing`, `POST /api/quotas`, `POST /api/invoices/generate`. Each goes through `adminHeaders()` from `api/client.js`, which merges in `X-Admin-Token` when `VITE_ADMIN_TOKEN` is configured:
+
+```js
+export function adminHeaders(extra = {}) {
+  return ADMIN_TOKEN ? { ...extra, 'X-Admin-Token': ADMIN_TOKEN } : { ...extra }
+}
+```
+
+`GET /api/invoices` is deliberately not in that list: it is a read the backend leaves open, like the report and audit routes the dashboard renders from. If the backend has `ADMIN_API_TOKEN` set and the bundle was built without a matching `VITE_ADMIN_TOKEN`, the admin panel returns `401` while the rest of the dashboard keeps working.
 
 ### Derived Metrics
 
@@ -184,4 +199,4 @@ npm run dev      # dev server on :5173; VITE_API_BASE controls the backend targe
 npm run build    # output to dist/
 ```
 
-The production build is a static site deployable to any CDN. CORS is enabled on all `/api/*` routes in `CorsConfig.java`, so the frontend can be hosted independently of the backend with no additional server configuration.
+The production build is a static site deployable to any CDN. `CorsConfig.java` enables CORS on all `/api/**` routes, so the frontend can be hosted independently of the backend — but the allowed origins come from `CORS_ALLOWED_ORIGINS` on the backend. It defaults to `*`, which is why a local clone works with no configuration; a deployment that sets it must include the origin the dashboard is served from, or every call fails pre-flight.

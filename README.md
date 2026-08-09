@@ -5,7 +5,7 @@
 [![Java](https://img.shields.io/badge/Java-17-007396?logo=openjdk)](https://openjdk.org/projects/jdk/17/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.4-6DB33F?logo=springboot)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql)](https://www.postgresql.org/)
-[![GCP](https://img.shields.io/badge/GCP-App%20Engine-4285F4?logo=googlecloud)](https://cloud.google.com/appengine)
+[![Railway](https://img.shields.io/badge/Deployed-Railway-0B0D0E?logo=railway)](https://tollgate.odieyang.com)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ---
@@ -63,7 +63,7 @@ All LLM calls are routed through a single gateway endpoint. The gateway authenti
                                    └─────────────────│────────────────────-┘
                                                      │
                                    ┌─────────────────▼──────────────────┐
-                                   │         PostgreSQL (GCP VM)         │
+                                   │            PostgreSQL 15            │
                                    │  tenant → project → api_key         │
                                    │  request → response / denied_event  │
                                    │  monthly_quota · invoice · audit_log│
@@ -72,9 +72,10 @@ All LLM calls are routed through a single gateway endpoint. The gateway authenti
 
 **Infrastructure**
 
-- **Database**: PostgreSQL 15 on GCP Compute Engine (e2-medium, us-central)
-- **App Server**: Spring Boot 3.2.4 on Google App Engine Standard (Java 17)
-- **Live URL**: https://database-llm-gateway.uc.r.appspot.com
+- **Database**: PostgreSQL 15
+- **App Server**: Spring Boot 3.2.4 (Java 17), single jar serving both the API and the built dashboard
+- **Hosting**: Railway, built with Nixpacks
+- **Live URL**: https://tollgate.odieyang.com
 
 ---
 
@@ -126,12 +127,17 @@ These routes are gated by `ADMIN_API_TOKEN`. When it is set, every call must car
 
 | Method | Endpoint | Description |
 |---|---|---|
+| `GET` | `/api/tenants` | List tenants |
 | `POST` | `/api/tenants` | Create a tenant |
+| `GET` | `/api/projects?tenantId=` | List a tenant's projects |
 | `POST` | `/api/projects` | Create a project under a tenant |
+| `GET` | `/api/keys?projectId=` | List a project's keys (includes stored key hashes) |
 | `POST` | `/api/keys` | Issue an API key (raw key returned once) |
 | `PATCH` | `/api/keys/{keyId}/revoke` | Revoke a key |
+| `GET` | `/api/models` | List registered models |
 | `POST` | `/api/models` | Register an LLM model |
 | `POST` | `/api/pricing` | Set per-month token pricing for a model |
+| `GET` | `/api/quotas?projectId=&billingMonth=` | List a project's quotas (`billingMonth` optional) |
 | `POST` | `/api/quotas` | Set monthly token quota for a project |
 
 ### Gateway
@@ -175,7 +181,10 @@ Content-Type: application/json
 | `GET` | `/api/audit/keys/{keyId}/requests?from=&to=` | Request trail for a key |
 | `GET` | `/api/audit/revoked-usage` | Requests made after key revocation |
 | `GET` | `/api/audit/missing-responses` | Requests with no response record |
-| `POST` | `/api/invoices/generate?billingMonth=2026-04` | Generate monthly invoices |
+| `GET` | `/api/invoices?billingMonth=2026-08` | List invoices for a month |
+| `POST` | `/api/invoices/generate?billingMonth=2026-08` | Generate monthly invoices (requires `X-Admin-Token`) |
+
+Reports, audit, and `GET /api/invoices` are open; the gateway authenticates by `X-API-Key`. Only the Admin table above plus `POST /api/invoices/generate` are gated by `ADMIN_API_TOKEN`.
 
 ---
 
@@ -250,26 +259,32 @@ For a full end-to-end local demo sequence, see [`doc/local-run.md`](doc/local-ru
 
 ## Deployment
 
-The app is deployed to **GCP App Engine Standard** with a **PostgreSQL instance on Compute Engine**.
+The app runs on **Railway**, built with Nixpacks and backed by a Railway-managed PostgreSQL instance. Pushing to `main` triggers a build and deploy.
 
-```bash
-# Package and deploy
-mvn clean package -DskipTests
-mvn appengine:deploy
+`nixpacks.toml` drives the build. The frontend is compiled first, into `src/main/resources/static/`, so the packaged jar serves the API and the dashboard from the same origin:
+
+```toml
+[phases.build]
+cmds = [
+  "cd dashboard && npm install && npm run build",
+  "mvn clean package -DskipTests"
+]
+
+[start]
+cmd = "java -jar target/llm-api-gateway-0.0.1-SNAPSHOT.jar"
 ```
 
-Database credentials are injected via App Engine environment variables defined in `app.yaml`:
+Configuration is supplied as Railway service variables — the same names the app reads locally:
 
-```yaml
-env_variables:
-  SPRING_DATASOURCE_URL: "jdbc:postgresql://<VM_IP>:5432/<DB_NAME>"
-  SPRING_DATASOURCE_USERNAME: "<DB_USER>"
-  SPRING_DATASOURCE_PASSWORD: "..."
-  ADMIN_API_TOKEN: "..."
-  CORS_ALLOWED_ORIGINS: "https://tollgate.example.com"
+```
+SPRING_DATASOURCE_URL       jdbc:postgresql://<host>:<port>/<db>
+SPRING_DATASOURCE_USERNAME  <user>
+SPRING_DATASOURCE_PASSWORD  <password>
+ADMIN_API_TOKEN             <token>
+CORS_ALLOWED_ORIGINS        https://tollgate.odieyang.com
 ```
 
-The GCP firewall allows inbound TCP 5432 from App Engine service account IPs only.
+`ADMIN_API_TOKEN` and `CORS_ALLOWED_ORIGINS` have permissive defaults so a local clone runs with no setup. That default is wrong for a public deployment: leaving `ADMIN_API_TOKEN` unset means anyone who finds the URL can create tenants and issue or revoke API keys. Both cases are logged as warnings on startup — check the deploy log after a config change.
 
 ### Configuration
 
@@ -278,7 +293,10 @@ The GCP firewall allows inbound TCP 5432 from App Engine service account IPs onl
 | `ADMIN_API_TOKEN` | unset | Shared secret for the admin API, sent as `X-Admin-Token`. Unset leaves those routes open and logs a warning. |
 | `CORS_ALLOWED_ORIGINS` | `*` | Comma-separated origins permitted to call `/api/**`. `*` logs a warning. |
 | `DEMO_API_KEY` | `demo-1234-5678` | Raw key auto-issued at startup by `DemoKeyInitializer`. |
+| `DEMO_API_KEY_PROJECT_NAME` | `TechCorp-Dev` | Project the demo key is attached to; falls back to the lowest project id. |
 | `PORT` | `8080` | HTTP listen port. |
+
+Two variables can set the JDBC URL. `application.properties` reads `DATABASE_URL` (without the `jdbc:` prefix, which it prepends), while `app.yaml`, `docker-compose.yml`, and the `.env` template use `SPRING_DATASOURCE_URL` (with the prefix). Both work — an environment variable named after a Spring property overrides whatever `application.properties` set — but they are not interchangeable in form, so pick one and stay with it.
 
 Both security defaults are permissive so a fresh clone runs without setup, and both announce themselves in the startup log rather than failing quietly. Demo and production differ by configuration, not by branch.
 
