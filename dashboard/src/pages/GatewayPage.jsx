@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Zap, Send } from 'lucide-react'
+import { adminHeaders } from '../api/client.js'
 
 const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'
 const STATUS_COLORS = { success: '#4CAF82', failed: '#F5A623', denied: '#E84545' }
@@ -139,7 +140,10 @@ export default function GatewayPage({
   const generateInvoice = async () => {
     setGenerating(true)
     try {
-      await fetch(`${BASE}/api/invoices/generate?billingMonth=${invoiceMonth}`, { method: 'POST' })
+      await fetch(`${BASE}/api/invoices/generate?billingMonth=${invoiceMonth}`, {
+        method: 'POST',
+        headers: adminHeaders(),
+      })
       await fetchInvoices()
     } finally {
       setGenerating(false)
@@ -170,7 +174,7 @@ export default function GatewayPage({
     try {
       const res = await fetch(`${BASE}/api/tenants`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ name: tenantName, contactEmail: tenantEmail }),
       })
       const data = await res.json()
@@ -189,7 +193,7 @@ export default function GatewayPage({
     try {
       const res = await fetch(`${BASE}/api/projects`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ tenantId: createdTenant.tenantId, name: projectName, environment: projectEnv }),
       })
       const data = await res.json()
@@ -206,7 +210,10 @@ export default function GatewayPage({
     setAdminError(null)
     setAdminLoading('revoke')
     try {
-      const res = await fetch(`${BASE}/api/keys/${createdKey.keyId}/revoke`, { method: 'PATCH' })
+      const res = await fetch(`${BASE}/api/keys/${createdKey.keyId}/revoke`, {
+        method: 'PATCH',
+        headers: adminHeaders(),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Failed to revoke key')
       setRevokedKey(true)
@@ -223,7 +230,7 @@ export default function GatewayPage({
     try {
       const res = await fetch(`${BASE}/api/keys`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ projectId: createdProject.projectId, label: keyLabel || null }),
       })
       const data = await res.json()
@@ -235,7 +242,7 @@ export default function GatewayPage({
       try {
         await fetch(`${BASE}/api/pricing`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: adminHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ modelId: 1, billingMonth: currentMonth, inputRate: 0.005, outputRate: 0.015 }),
         })
         setPricingConfigured(true)
@@ -246,7 +253,7 @@ export default function GatewayPage({
       try {
         await fetch(`${BASE}/api/quotas`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: adminHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ projectId: createdProject.projectId, billingMonth: currentMonth, tokenLimit: 10000, costLimit: 50 }),
         })
         setQuotaConfigured(true)

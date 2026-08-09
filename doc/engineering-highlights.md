@@ -179,7 +179,23 @@ An optional `idempotency_key` column on `request` carries a composite unique con
 UNIQUE (project_id, idempotency_key)
 ```
 
-At the service layer, before any quota check, the gateway queries for a matching `(project_id, idempotency_key)` pair. If found, the original response is returned without touching the quota row. The unique constraint is the backstop: even if two identical requests arrive simultaneously, only one can commit; the other gets a unique-constraint violation that the service translates into a cache hit.
+At the service layer, before any quota check, the gateway queries for a matching `(project_id, idempotency_key)` pair. If found, the original response is returned without touching the quota row.
+
+That pre-check alone is only advisory — two concurrent requests can both read "not found" before either inserts. The unique constraint is what actually decides the race, and `GatewayService` is built to absorb losing it:
+
+```java
+try {
+    return transactionTemplate.execute(status -> processSubmit(rawApiKey, requestBody, idempotencyKey));
+} catch (DataIntegrityViolationException conflict) {
+    return replayConflictWinner(rawApiKey, idempotencyKey, conflict);
+}
+```
+
+The recovery depends on a property of the database rather than on timing luck. Postgres blocks the second `INSERT` on the unique index until the first transaction resolves, so by the moment the violation is raised the winner has already committed and is readable. `replayConflictWinner` opens a **second** transaction and returns the winner as an ordinary idempotent replay.
+
+The second transaction is not optional. Once a constraint violation reaches the JPA session, that session is poisoned and the transaction is marked rollback-only, so the loser cannot re-read anything from inside the transaction that just failed. This is also why transaction boundaries here are managed with `TransactionTemplate` instead of `@Transactional`: splitting a private helper out would not have worked, because self-invocation bypasses the Spring proxy that applies the annotation.
+
+Measured with 12 concurrent submits sharing one idempotency key, across three rounds: 12 × `200`, one `idempotent: false` winner and 11 `idempotent: true` replays all carrying the same `requestId`, and `tokens_used` advanced by exactly one request's worth. Note that Hibernate logs each losing `INSERT` at `ERROR` before the handler sees it; `GatewayService` emits an accompanying `INFO` line so those stack traces are identifiable as absorbed collisions rather than failures.
 
 Idempotency scope is per-project (not per-key), which means a caller can rotate keys without invalidating pending idempotency windows.
 
@@ -266,3 +282,41 @@ The project uses `spring.jpa.hibernate.ddl-auto=none` — Hibernate does not gen
 Seed data in `data.sql` is loaded in the same initialization pass, providing 3 tenants, 6 projects, 12 API keys, 3 LLM models, and 210 mock requests for immediate query validation without manual setup.
 
 Every timestamp and `billing_month` in the seed is derived from `CURRENT_DATE`, not written as a literal. The gateway resolves quota and pricing for `YearMonth.now()` on each submit, so a fixed month would leave a freshly seeded database rejecting its first request with `No quota configured` on any date outside that month — the seed would silently expire. The `project` and `api_key` inserts also carry an explicit `ORDER BY`, so `SERIAL` values are assigned in a stable order and references such as "project 1 is TechCorp-Dev" hold across rebuilds.
+
+---
+
+## 11. Two Authentication Surfaces, Not One
+
+### The Problem
+
+The gateway endpoint authenticates every caller by SHA-256 key hash. The admin API — which creates tenants, issues keys, revokes them, and sets pricing and quota — had no authentication at all. `GET /api/keys` even returns stored key hashes. Anything that could reach the port could reissue credentials for any tenant.
+
+These two surfaces have genuinely different requirements, which is why one mechanism does not cover both. A gateway caller is a specific API key belonging to a specific project, and the system needs that identity to attribute cost and enforce quota. An admin caller has no per-tenant identity in this data model; there is no user table and no role hierarchy to authenticate against.
+
+### The Decision
+
+The admin surface is gated by a single deployment-wide shared secret, presented as `X-Admin-Token` and checked by a `HandlerInterceptor`:
+
+```java
+// AdminSecurityConfig
+registry.addInterceptor(new AdminAuthInterceptor(adminToken))
+        .addPathPatterns(PROTECTED_PATTERNS);
+```
+
+Three details carry weight:
+
+**The check is opt-in by configuration.** When `ADMIN_API_TOKEN` is unset the interceptor is not registered at all and a warning is logged at startup. A local clone stays immediately usable, and locking down a deployment is one environment variable rather than a code change. The failure mode is deliberate: an unprotected deployment announces itself in the logs instead of failing silently.
+
+**Comparison is constant-time.** `MessageDigest.isEqual` rather than `String.equals`, so response timing cannot be used to recover the token byte by byte.
+
+**Pre-flight requests bypass the check.** Spring keeps registered interceptors on the pre-flight handler chain, so an unauthenticated `OPTIONS` would be rejected before the browser ever sends the real request — CORS negotiation would fail and the admin panel would break in a way that looks like a CORS bug rather than an auth one. `AdminAuthInterceptor` returns early for `OPTIONS`.
+
+Read-only report and audit routes stay open so the dashboard renders without credentials, and `/api/gateway/submit` is excluded because it already authenticates by API key.
+
+### CORS
+
+`CORS_ALLOWED_ORIGINS` takes a comma-separated origin list and defaults to `*`, again logging a warning when it is left open. Demo and production differ by configuration, not by branch.
+
+### What This Is Not
+
+A shared secret is coarse: it authenticates the deployment operator, not a person, and it cannot express "this admin may manage tenant A but not tenant B." It also does not survive being embedded in a frontend bundle — the dashboard's `VITE_ADMIN_TOKEN` is readable by anyone who loads the page, so it raises the cost of casual abuse of a public demo and nothing more. A production system would put the admin panel behind a real login and keep the token server-side. What this does buy is that the admin API is no longer open to the internet by default, which was the actual defect.

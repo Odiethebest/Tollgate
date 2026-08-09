@@ -122,6 +122,8 @@ Full DDL: [`src/main/resources/schema.sql`](src/main/resources/schema.sql)
 
 ### Admin
 
+These routes are gated by `ADMIN_API_TOKEN`. When it is set, every call must carry `X-Admin-Token: <token>` or it is rejected with `401`. When it is unset the gate is disabled and a warning is logged at startup — convenient locally, wrong anywhere reachable from outside your machine.
+
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/api/tenants` | Create a tenant |
@@ -263,9 +265,24 @@ env_variables:
   SPRING_DATASOURCE_URL: "jdbc:postgresql://<VM_IP>:5432/<DB_NAME>"
   SPRING_DATASOURCE_USERNAME: "<DB_USER>"
   SPRING_DATASOURCE_PASSWORD: "..."
+  ADMIN_API_TOKEN: "..."
+  CORS_ALLOWED_ORIGINS: "https://tollgate.example.com"
 ```
 
 The GCP firewall allows inbound TCP 5432 from App Engine service account IPs only.
+
+### Configuration
+
+| Variable | Default | Effect |
+|---|---|---|
+| `ADMIN_API_TOKEN` | unset | Shared secret for the admin API, sent as `X-Admin-Token`. Unset leaves those routes open and logs a warning. |
+| `CORS_ALLOWED_ORIGINS` | `*` | Comma-separated origins permitted to call `/api/**`. `*` logs a warning. |
+| `DEMO_API_KEY` | `demo-1234-5678` | Raw key auto-issued at startup by `DemoKeyInitializer`. |
+| `PORT` | `8080` | HTTP listen port. |
+
+Both security defaults are permissive so a fresh clone runs without setup, and both announce themselves in the startup log rather than failing quietly. Demo and production differ by configuration, not by branch.
+
+The dashboard reads `VITE_ADMIN_TOKEN` at build time and attaches it to admin calls. That value is baked into the bundle and readable by anyone who loads the page — it raises the cost of casual abuse on a public demo and is not a secret. A deployment needing real protection should put the admin panel behind a login and keep the token server-side.
 
 ---
 
