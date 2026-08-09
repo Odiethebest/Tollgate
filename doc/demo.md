@@ -111,7 +111,7 @@ This writes the built files into `src/main/resources/static`.
 
 ## 5. Manual Verification Checklist
 
-This sequence is designed for presentation prep and manual QA.
+This sequence is designed for demo prep and manual QA.
 
 Before running the gateway examples, define a fresh suffix:
 
@@ -321,7 +321,7 @@ These three tables are enough to show:
 
 ## 7. Useful Error Checks
 
-You can also verify invalid input handling for presentation.
+You can also verify invalid input handling for the demo.
 
 Project lookup with nonexistent tenant:
 
@@ -373,7 +373,7 @@ Then restart Spring Boot.
 
 ---
 
-## 9. Recommended Presentation Demo Order
+## 9. Recommended Demo Order
 
 For a 5 to 6 minute demo, this order is the most stable:
 

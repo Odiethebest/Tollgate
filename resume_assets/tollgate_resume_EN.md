@@ -198,5 +198,4 @@ flowchart TD
 7. **The LLM itself is fully mocked.** `outputTokens` and `latencyMs` are `ThreadLocalRandom`. If anyone assumes a real OpenAI / Anthropic integration, correct them — README itself says "The LLM execution layer is intentionally mocked."
 8. **One README claim cannot be verified from code.** README says "GCP firewall allows inbound TCP 5432 only from App Engine service account IPs." That is infrastructure config outside the repo — please confirm before stating it.
 9. **No CI/CD pipeline.** No `.github/workflows/` directory exists. Do not write "set up CI/CD" unless you separately have scripts to show.
-10. **Individual vs. team contribution.** The README has a Team section that I did not fully read. If this was a group project, clarify which modules were yours so the resume can say "led" vs. "contributed."
-11. **No migration tool.** Schema is loaded via raw `schema.sql + data.sql` (`spring.sql.init.mode=always`), not Flyway or Liquibase. Do not list Flyway/Liquibase on the resume — it isn't in the code.
+10. **No migration tool.** Schema is loaded via raw `schema.sql + data.sql` (`spring.sql.init.mode=always`), not Flyway or Liquibase. Do not list Flyway/Liquibase on the resume — it isn't in the code.

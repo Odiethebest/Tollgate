@@ -23,7 +23,6 @@
 - [Engineering Highlights](doc/engineering-highlights.md)
 - [Frontend Architecture](doc/frontend-architecture.md)
 - [Dashboard Design Language](doc/dashboard-design-language.md)
-- [Team](#team)
 
 ---
 
@@ -321,14 +320,3 @@ Optimistic locking (version column) would require retry logic in the application
 ## Engineering Highlights
 
 For a deeper walkthrough of the non-obvious technical decisions in this project — including why pessimistic locking was chosen over optimistic, how SHA-256 key hashing is structured, the rationale behind denormalization on `request`, and how transaction boundaries were designed for atomicity — see [`doc/engineering-highlights.md`](doc/engineering-highlights.md).
-
----
-
-## Team
-
-| Name             | Role |
-|------------------|---|
-| Runxin(Alex)Shao | Schema design, GCP deployment |
-| Ziqi(Odie)Yang   | API implementation, transaction logic |
-
-CS 5200 Database Management Systems — Northeastern University, Spring 2026

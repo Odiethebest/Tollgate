@@ -112,7 +112,7 @@ GET /api/invoices?billingMonth={month}
 - tenant：`status` 切换代替删除
 - request / response：append-only，绝不修改或删除，这是审计完整性的核心保障
 
-Presentation 时主动说明这是设计决策，不是功能缺失。老师通常认可这种工程判断。
+演示时主动说明这是设计决策，不是功能缺失。
 
 ---
 
@@ -151,7 +151,7 @@ setHistory(prev => [{
 
 **前置条件**：P2-6 的 Read 接口完成后再做。
 
-**目标**：一个页面能完整串联"创建 tenant → 创建 project → 签发 key → 设置 pricing → 设置 quota → 生成 invoice → 查看 invoice"。不追求样式，重点是把课程要求的 CRUD 和 Query 在前端里走通一遍。
+**目标**：一个页面能完整串联"创建 tenant → 创建 project → 签发 key → 设置 pricing → 设置 quota → 生成 invoice → 查看 invoice"。不追求样式，重点是把 CRUD 和 Query 在前端里走通一遍。
 
 **页面结构**：左侧表单区（Create 操作），右侧结果区（GET 列表实时刷新）。
 
@@ -183,11 +183,11 @@ private String allowedOrigins;
 
 Railway 上设置 `CORS_ALLOWED_ORIGINS=https://tollgate.odieyang.com`，本地保持 `*`。
 
-Presentation 时说明："demo 环境开放，生产部署按来源收紧，这是有意识的环境分离。"
+演示时说明："demo 环境开放，生产部署按来源收紧，这是有意识的环境分离。"
 
 ---
 
-## Presentation 前最小落地顺序
+## 演示前最小落地顺序
 
 时间不够时，严格按顺序，做完一步确认再做下一步：
 
@@ -205,12 +205,12 @@ Presentation 时说明："demo 环境开放，生产部署按来源收紧，这�
 
 ---
 
-## Presentation 中需要主动说明的边界
+## 演示中需要主动说明的边界
 
 提前想好说法，不要被动挨问：
 
 - **没有 user login**：认证主体是 API key，这是 API gateway 的标准设计，不是遗漏。对接的是团队和系统，不是终端用户。
-- **LLM 是 mock**：重点在数据库设计、事务一致性和查询层，mock 是刻意的范围控制，符合课程要求。
+- **LLM 是 mock**：重点在数据库设计、事务一致性和查询层，mock 是刻意的范围控制。
 - **前端是运营 dashboard，不是完整后台管理系统**：定位是监控和审计工具，AdminPage 是辅助演示入口。
 - **软删除代替物理删除**：这是审计系统的工程标准，保留历史记录是设计要求，不是偷懒。
 - **CORS 当前宽松**：演示环境刻意开放，生产按环境变量收紧，已有配置基础。

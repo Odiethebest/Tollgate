@@ -198,5 +198,4 @@ flowchart TD
 7. **LLM 完全 mock**:`outputTokens` 和 `latencyMs` 都是 `ThreadLocalRandom`。如果对方误以为接了真实 OpenAI/Anthropic,请主动澄清"LLM 执行层故意 mock,项目重点在 schema 设计与事务正确性"(README 原话)。
 8. **README 与代码的小矛盾**:README 提到「`request_id` 在 `response` 上 UNIQUE」与代码一致;但 README 提到"GCP firewall 限制只允许 App Engine 服务账号 IP",这一项无法从仓库代码确认,需要你自己核实。
 9. **CI/CD**:仓库根没有 `.github/workflows/`,Bullet 里不要写"配 CI"。如果你有手动 mvn → appengine deploy 的脚本,记得自己描述清楚。
-10. **个人贡献占比**:`README` 的 Team 部分(没读到全部)可能有合作者。请确认这个项目是个人独立完成还是团队作业,以及每个模块的具体负责人,简历里要写清"主导/合作完成"。
-11. **数据库 schema 版本管理**:没有用 Flyway / Liquibase,而是直接 `schema.sql + data.sql`(`spring.sql.init.mode=always`)。这点要不要在简历上提"使用 Flyway"——目前不能写,因为代码里没有。
+10. **数据库 schema 版本管理**:没有用 Flyway / Liquibase,而是直接 `schema.sql + data.sql`(`spring.sql.init.mode=always`)。这点要不要在简历上提"使用 Flyway"——目前不能写,因为代码里没有。
