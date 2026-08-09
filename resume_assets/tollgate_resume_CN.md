@@ -176,6 +176,16 @@ flowchart TD
 
 ---
 
+### h2. 测试
+
+- `mvn test` 跑 21 个集成测试,约 9 秒,全部基于 **Testcontainers 拉起的真实 PostgreSQL**(不是 H2)。理由是被测性质恰好是 H2 不实现或实现不同的那些:`SELECT … FOR UPDATE` 串行化配额扣减、以及失败的 `INSERT` 阻塞在唯一索引上。
+- `GatewaySubmitIntegrationTest`(7 项)覆盖网关状态机:成功精确扣配额且三表齐全、恰好打满的边界、429 时配额不动、撤销 key 连发三次都是 403、幂等重放只扣一次、以及 **12 线程抢同一幂等键收敛成一条被计费的请求**。
+- `AdminApiSecurityIntegrationTest`(14 项)覆盖管理面鉴权,含 **CORS 预检必须绕过 token 校验**这条(Spring 会把拦截器挂在预检处理链上,不放行的话浏览器根本发不出真实请求)。
+- 每个测试自建租户/项目/key/配额,不依赖执行顺序,也不依赖种子的可变行。
+- **做过变异验证**:把三处修复分别注入回退后重跑,每次精确打红对应测试、其余保持绿。这一点可以在面试里主动讲——它回答的是"你怎么知道你的测试不是摆设"。
+
+---
+
 ## 简历可用 bullet 草稿(3-5 条)
 
 - 设计并实现 Tollgate —— 一个 Java 17 / Spring Boot 3.2.4 多租户 LLM API 网关,围绕 11 张 PostgreSQL 表(`tenant/project/api_key/llm_model/model_pricing/request/response/denied_event/monthly_quota/invoice/audit_log`)建模租户隔离、配额、审计与计费全链路,在单一事务入口完成鉴权 → 配额扣减 → 落库,并把并发幂等冲突降级为重放而非 500。
@@ -183,6 +193,7 @@ flowchart TD
 - 使用 Spring Data Interface Projection + 8 段 native SQL 实现成本归因 / Top 5 项目 / 模型成功率与平均延迟 / Quota>80% 告警 / revoked-key 异常用量 / 缺失 response 异常等分析查询,直接为 React Dashboard 与月度发票生成提供数据底座。
 - 用 SHA-256 哈希存储 API key(原始 key 仅签发时返回一次)+ 软删除式撤销(`status=revoked` + `revoked_at`)+ 启动时自愈的 `DemoKeyInitializer`,构建可审计的 key 生命周期,并通过 `audit_log` 把每次 allow/deny 决策与 `request_id` 关联。
 - 多阶段 Docker 镜像 + `docker-compose`(Postgres 15 + 应用,带 healthcheck)+ Nixpacks 构建部署到 Railway(线上 `https://tollgate.odieyang.com`),前端 React 18 + Vite 产物随 jar 一同发布、与 API 同源,通过 `WebConfig` 将 SPA 路由 forward 到 `index.html`。[待确认: 是否有真实用户访问数据]
+- 用 Testcontainers 起真实 PostgreSQL 写了 21 个集成测试(`mvn test` 约 9 秒),覆盖配额原子扣减、超额拒绝、撤销拒绝、幂等重放,以及 12 线程抢同一幂等键的并发竞争;并通过注入回退验证测试有效性——三处修复各自回退后精确打红对应用例。
 
 ---
 

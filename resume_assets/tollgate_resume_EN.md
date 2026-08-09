@@ -176,6 +176,16 @@ flowchart TD
 
 ---
 
+### h2. Testing
+
+- `mvn test` runs 21 integration tests in about 9 seconds, all against a **real PostgreSQL started by Testcontainers** rather than H2. The reason is specific: the properties under test are `SELECT … FOR UPDATE` serialising quota debits and a losing `INSERT` blocking on a unique index, which H2 either does not implement or implements differently.
+- `GatewaySubmitIntegrationTest` (7 tests) covers the gateway state machine: exact quota debit with all three tables written, the boundary where usage exactly reaches the limit, `429` leaving the counter untouched, `403` across repeated attempts with a revoked key, idempotent replay charging once, and **twelve concurrent callers sharing one idempotency key collapsing into a single charged request**.
+- `AdminApiSecurityIntegrationTest` (14 tests) covers the admin gate, including that a **CORS pre-flight must bypass the token check** — Spring keeps interceptors on the pre-flight handler chain, so challenging `OPTIONS` would stop the browser ever sending the real request.
+- Each test provisions its own tenant, project, key and quota, so nothing depends on execution order or on the seed's mutable rows.
+- **Verified by mutation**: reverting each of the three fixes the suite guards turns exactly the corresponding test red and leaves the rest green. Worth raising unprompted in an interview — it answers "how do you know your tests aren't decorative?"
+
+---
+
 ## Resume Bullets (Drafts, 3–5)
 
 - Designed and implemented **Tollgate**, a Java 17 / Spring Boot 3.2.4 multi-tenant LLM API gateway whose 11-table PostgreSQL schema (`tenant / project / api_key / llm_model / model_pricing / request / response / denied_event / monthly_quota / invoice / audit_log`) models tenant isolation, quotas, audit, and billing; a single transactional entry point performs authentication, quota debit, and persistence end to end, and degrades concurrent idempotency collisions into replays rather than 500s.
@@ -183,6 +193,7 @@ flowchart TD
 - Built the analytics surface — cost attribution, top-5 projects per tenant, per-model success rate & average latency, >80% quota alerts, revoked-key compliance scan, missing-response anomaly scan — on top of 8 Spring Data **interface projections** backed by native SQL, powering both the React dashboard and the monthly invoice job.
 - Designed an auditable key lifecycle: store **SHA-256 hashes only** (raw key returned once on issue), soft-delete via `status=revoked` + `revoked_at`, self-healing `DemoKeyInitializer` on boot, and an `audit_log` row linked to every allow / deny decision via `request_id`.
 - Packaged the system with a multi-stage Docker image and `docker-compose` (Postgres 15 + app, with healthcheck) and shipped it to **Railway** via a **Nixpacks** build (live at `https://tollgate.odieyang.com`); bundled the React 18 + Vite dashboard inside the same jar via `WebConfig` SPA forwarding. [TO CONFIRM: is the live URL still up / any real traffic stats?]
+- Wrote 21 integration tests against a real PostgreSQL via Testcontainers (`mvn test`, ~9s) covering atomic quota debit, over-limit refusal, revoked-key refusal, idempotent replay, and a twelve-thread race on one idempotency key; validated the suite by injecting each fix's regression and confirming it turns exactly the matching test red.
 
 ---
 

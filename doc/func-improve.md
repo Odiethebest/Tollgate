@@ -2,7 +2,7 @@
 
 排序原则：不是"哪个看起来最想做"，而是"哪个不先做，后面的演示就会塌"。
 
-> **进度**：1–10、12 已完成并合入。**唯一未做的是第 11 项（关键路径集成测试）**——`src/test/` 目录是空的。
+> **进度**：全部 12 项已完成并合入。
 > 下面各项保留原始描述，作为决策记录；实现细节以代码和 `engineering-highlights.md` 为准。
 
 ---
@@ -162,16 +162,31 @@ setHistory(prev => [{
 
 ## P4 工程质量
 
-### 11. 关键路径集成测试
+### 11. 关键路径集成测试 ✅ 已完成
 
-不需要高覆盖率，只需要能展示的结果。按优先级补：
+原计划的四条全部覆盖，另加三条：
 
-1. 成功请求 → `request + response + audit_log` 全部写入，quota 正确扣减
-2. quota exceeded → 返回 429，quota 数值不变
-3. revoked key → 返回 403，`audit_log` 写入 `KEY_REVOKED`
-4. idempotent replay → 第二次相同 `idempotency_key` 不重复扣 quota
+| 测试 | 断言的是什么 |
+|---|---|
+| 成功请求 | quota 精确扣减，`request + response + audit_log` 三表齐全，无 `denied_event` |
+| 恰好打满 | `used + input == limit` 放行；再多 1 个 token 才 429 |
+| quota exceeded | 429 + `QUOTA_EXCEEDED`，**quota 数值不动**，无 response 行 |
+| revoked key | 403 + `KEY_REVOKED`，且同一幂等键连发三次都是 403（不再 500） |
+| idempotent replay | 同一 `requestId`、`idempotent=true`、quota 只扣一次 |
+| **并发幂等** | 12 线程抢同一幂等键：全 200、同一 `requestId`、恰好一个赢家、quota 扣一次 |
+| 种子覆盖当月 | 当月 pricing 与 quota 均存在，保证空库开箱即可发请求 |
 
-**完成标准**：至少前两个测试 `mvn test` 跑绿，演示时展示测试报告截图作为正确性证明。
+另有 `AdminApiSecurityIntegrationTest` 14 项，覆盖 token 缺失/错误/正确、写接口保护、只读面保持开放、以及 **CORS 预检必须绕过鉴权**。
+
+跑法：`mvn test`（需要 Docker）。21 个测试约 9 秒。
+
+**它们确实有牙**——把三处修复分别注入回退后重跑，每次都精确打红对应的测试、其余保持绿：
+
+| 注入的回退 | 变红的测试 |
+|---|---|
+| 撤销分支重新携带幂等键 | `revokedKeyIsRefusedAndRepeatsDoNotCollide` |
+| 拿掉并发冲突恢复，直接抛 | `concurrentSubmitsSharingAnIdempotencyKeyCollapseIntoOne` |
+| 拿掉 `OPTIONS` 放行 | `corsPreflightIsNotBlockedByTheTokenCheck` |
 
 ---
 

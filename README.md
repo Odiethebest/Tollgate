@@ -6,6 +6,7 @@
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.4-6DB33F?logo=springboot)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql)](https://www.postgresql.org/)
 [![Railway](https://img.shields.io/badge/Deployed-Railway-0B0D0E?logo=railway)](https://tollgate.odieyang.com)
+[![Tests](https://img.shields.io/badge/tests-21%20passing-4CAF82?logo=junit5&logoColor=white)](#tests)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ---
@@ -254,6 +255,18 @@ curl -X POST http://localhost:8080/api/gateway/submit \
 ```
 
 For a full end-to-end local demo sequence, see [`doc/local-run.md`](doc/local-run.md).
+
+### Tests
+
+```bash
+mvn test      # 21 integration tests, ~9s, requires Docker
+```
+
+Every test runs against a real PostgreSQL started by Testcontainers, not an in-memory database. The properties under test — `SELECT ... FOR UPDATE` serialising quota debits, and a losing `INSERT` blocking on a unique index — are precisely the ones H2 either does not implement or implements differently, so a green run there would prove nothing.
+
+`GatewaySubmitIntegrationTest` covers the gateway state machine: quota debited exactly once on success, the boundary where usage exactly reaches the limit, `429` leaving the counter untouched, `403` for a revoked key across repeated attempts, idempotent replay charging once, and twelve concurrent callers sharing one idempotency key collapsing into a single charged request. `AdminApiSecurityIntegrationTest` covers the admin gate, including that a CORS pre-flight passes through it.
+
+The suite was checked against injected regressions: reverting each of the three fixes it guards turns exactly the corresponding test red and leaves the rest green.
 
 ---
 
